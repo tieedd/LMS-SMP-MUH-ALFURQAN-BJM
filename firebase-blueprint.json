@@ -2,7 +2,7 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "Profil guru atau admin SMP Muhammadiyah Al Furqan",
+      "description": "Profil dan peran pengguna (admin, guru, atau wali_kelas) SMP Muhammadiyah Al Furqan",
       "type": "object",
       "properties": {
         "uid": {
@@ -22,7 +22,23 @@
         },
         "role": {
           "type": "string",
-          "enum": ["guru", "admin"]
+          "enum": ["admin", "guru", "wali_kelas"]
+        },
+        "kelasDiampu": {
+          "type": "array",
+          "description": "Daftar kelas yang diajar oleh guru (misal ['7A', '7B'])"
+        },
+        "mapelDiampu": {
+          "type": "array",
+          "description": "Daftar mata pelajaran yang diampu oleh guru"
+        },
+        "waliKelas": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "Kelas perwalian jika berperan sebagai wali_kelas (misal '7A')"
+        },
+        "aktif": {
+          "type": "boolean"
         },
         "createdAt": {
           "type": "string",
@@ -33,11 +49,11 @@
           "format": "date-time"
         }
       },
-      "required": ["uid", "nama", "role", "createdAt", "updatedAt"]
+      "required": ["uid", "nama", "email", "role", "kelasDiampu", "mapelDiampu", "waliKelas", "aktif", "createdAt", "updatedAt"]
     },
     "Siswa": {
       "title": "Siswa",
-      "description": "Data pokok siswa per kelas milik guru pengampu",
+      "description": "Data pokok siswa per kelas di SMP Muhammadiyah Al Furqan",
       "type": "object",
       "properties": {
         "ownerId": {
@@ -82,7 +98,7 @@
     },
     "Absensi": {
       "title": "Absensi",
-      "description": "Catatan kehadiran harian siswa per tanggal",
+      "description": "Catatan kehadiran harian siswa per tanggal dan kelas",
       "type": "object",
       "properties": {
         "ownerId": {
@@ -134,7 +150,7 @@
     },
     "Nilai": {
       "title": "Nilai",
-      "description": "Nilai siswa per mata pelajaran dan jenis penilaian",
+      "description": "Nilai siswa per mata pelajaran, kelas, dan jenis penilaian",
       "type": "object",
       "properties": {
         "ownerId": {
@@ -201,19 +217,19 @@
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
-      "description": "Profil akun guru yang login"
+      "description": "Profil dan hak akses pengguna (admin, guru, wali_kelas)"
     },
     "/siswa/{siswaId}": {
       "schema": { "$ref": "#/entities/Siswa" },
-      "description": "Daftar data siswa milik guru"
+      "description": "Daftar data siswa sekolah (dikelola Admin, dibaca Guru/Wali Kelas sesuai kelasnya)"
     },
     "/absensi/{absensiId}": {
       "schema": { "$ref": "#/entities/Absensi" },
-      "description": "Rekam absensi harian siswa"
+      "description": "Rekam absensi harian siswa (diinput Guru kelas yang diajar atau Admin, dibaca Wali Kelas)"
     },
     "/nilai/{nilaiId}": {
       "schema": { "$ref": "#/entities/Nilai" },
-      "description": "Rekam nilai siswa per mata pelajaran dan penilaian"
+      "description": "Rekam nilai siswa (diinput Guru mapel & kelas yang diajar atau Admin, dibaca Wali Kelas)"
     }
   }
 }

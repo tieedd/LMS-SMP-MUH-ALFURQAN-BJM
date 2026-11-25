@@ -72,7 +72,7 @@
       </div>
     </section>
 
-    <!-- Layar Login Guru -->
+    <!-- Layar Login Guru (Sederhana: Email, Kata Sandi, dan Lupa Kata Sandi) -->
     <section id="login-screen" class="center-screen" hidden>
       <div class="auth-card">
         <div class="brand-lockup">
@@ -85,20 +85,21 @@
           </div>
           <div>
             <h1 class="brand-title">SMP Muhammadiyah Al Furqan</h1>
-            <p class="brand-subtitle">Aplikasi Rekap Nilai &amp; Absen Guru</p>
+            <p class="brand-subtitle">Aplikasi Rekap Nilai &amp; Absen</p>
           </div>
         </div>
 
         <p class="login-intro">
-          Silakan masuk terlebih dahulu untuk mencatat kehadiran siswa, mengisi nilai, dan mengunduh
-          laporan Excel.
+          Masukkan email dan kata sandi akun sekolah Anda untuk mulai mencatat absen, mengisi
+          nilai, atau melihat rekap kelas.
         </p>
 
         <div id="login-error-box" class="alert-banner alert-banner--error" hidden></div>
+
         <div id="verify-email-box" class="alert-banner alert-banner--warning" hidden>
           <p id="verify-email-text">
-            Email Anda belum diverifikasi. Silakan periksa kotak masuk email Anda, lalu klik tombol di
-            bawah setelah verifikasi.
+            Email Anda belum diverifikasi. Silakan buka kotak masuk email Anda dan klik tautan
+            verifikasi, lalu tekan tombol di bawah.
           </p>
           <div class="alert-actions">
             <button type="button" id="btn-kirim-verifikasi" class="btn btn-secondary btn-sm">
@@ -107,34 +108,24 @@
             <button type="button" id="btn-cek-verifikasi" class="btn btn-primary btn-sm">
               Saya Sudah Verifikasi
             </button>
+            <button type="button" id="btn-keluar-verifikasi" class="btn btn-ghost btn-sm">
+              Ganti Akun
+            </button>
           </div>
         </div>
 
-        <button type="button" id="btn-login-google" class="btn btn-primary btn-full btn-lg">
-          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"
-            />
-          </svg>
-          <span>Masuk dengan Akun Google</span>
-        </button>
-
-        <div class="divider-text">
-          <span>atau pakai email dan kata sandi</span>
+        <div id="no-profile-box" class="alert-banner alert-banner--warning" hidden>
+          <p id="no-profile-text">
+            Akun Anda belum terdaftar atau sedang dinonaktifkan oleh Admin sekolah.
+          </p>
+          <div class="alert-actions">
+            <button type="button" id="btn-keluar-noprofile" class="btn btn-secondary btn-sm">
+              Keluar &amp; Ganti Akun
+            </button>
+          </div>
         </div>
 
-        <button
-          type="button"
-          id="btn-toggle-email-form"
-          class="btn btn-ghost btn-full"
-          aria-expanded="false"
-          aria-controls="form-login-email"
-        >
-          Tampilkan Form Email &amp; Kata Sandi
-        </button>
-
-        <form id="form-login-email" class="email-form" hidden>
+        <form id="form-login-email" class="email-form" style="margin-top: 0">
           <div class="form-group">
             <label for="input-login-email" class="form-label">Alamat Email</label>
             <input
@@ -152,21 +143,40 @@
               type="password"
               id="input-login-password"
               class="form-input"
-              placeholder="Minimal 6 karakter"
+              placeholder="Masukkan kata sandi Anda"
               autocomplete="current-password"
               minlength="6"
               required
             />
           </div>
           <div class="email-form-actions">
-            <button type="submit" id="btn-submit-email-login" class="btn btn-primary btn-full">
-              Masuk dengan Email
+            <button type="submit" id="btn-submit-email-login" class="btn btn-primary btn-full btn-lg">
+              Masuk
             </button>
-            <button type="button" id="btn-daftar-email" class="btn btn-secondary btn-full">
-              Buat Akun Baru
+            <button type="button" id="btn-lupa-sandi" class="btn btn-ghost btn-full">
+              Lupa kata sandi?
             </button>
           </div>
         </form>
+
+        <div class="divider-text">
+          <span>atau masuk dengan Google</span>
+        </div>
+
+        <button type="button" id="btn-login-google" class="btn btn-secondary btn-full">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"
+            />
+          </svg>
+          <span>Masuk dengan Akun Google</span>
+        </button>
+
+        <p class="login-footnote">
+          Belum punya akun? Silakan minta Admin SMP Muhammadiyah Al Furqan untuk membuatkan akun
+          guru atau wali kelas Anda.
+        </p>
       </div>
     </section>
 
@@ -226,6 +236,7 @@
         <div class="sidebar-footer">
           <div class="teacher-info">
             <p class="teacher-name" id="sidebar-teacher-name">Guru</p>
+            <p class="teacher-role" id="sidebar-teacher-role">Peran</p>
             <p class="teacher-email" id="sidebar-teacher-email">-</p>
           </div>
           <button type="button" id="btn-logout-desktop" class="btn btn-secondary btn-full">
@@ -239,7 +250,7 @@
         <!-- Header Ringkas Khusus HP -->
         <header class="mobile-topbar">
           <div class="mobile-topbar-title">
-            <span class="mobile-school-name">SMP Muhammadiyah Al Furqan</span>
+            <span class="mobile-school-name" id="mobile-role-label">SMP Muhammadiyah Al Furqan</span>
             <h2 class="mobile-page-name" id="mobile-page-title">Absen Siswa</h2>
           </div>
           <button type="button" id="btn-logout-mobile" class="btn btn-secondary btn-sm">
@@ -484,59 +495,94 @@
             </div>
           </section>
 
-          <!-- HALAMAN 4: DATA SISWA -->
+          <!-- HALAMAN 4: DATA SISWA (dan Kelola Akun Guru khusus Admin) -->
           <section id="halaman-siswa" class="page-section" aria-labelledby="judul-siswa" hidden>
             <div class="page-header">
               <div>
                 <h1 id="judul-siswa" class="page-title">Data Siswa</h1>
-                <p class="page-desc">
+                <p class="page-desc" id="siswa-page-desc">
                   Tambah siswa satu per satu atau masukkan daftar siswa sekaligus dari file Excel.
                 </p>
               </div>
-              <div class="header-actions">
+              <div class="header-actions" id="admin-siswa-actions">
                 <button type="button" id="btn-tambah-siswa" class="btn btn-primary">
                   + Tambah Siswa
+                </button>
+                <button type="button" id="btn-tambah-akun" class="btn btn-primary" hidden>
+                  + Tambah Akun Guru
                 </button>
               </div>
             </div>
 
-            <div class="panel">
-              <div class="filter-grid filter-grid--3">
-                <div class="form-group">
-                  <label for="siswa-cari" class="form-label">Cari Nama atau NIS</label>
-                  <input
-                    type="search"
-                    id="siswa-cari"
-                    class="form-input"
-                    placeholder="Ketik nama siswa..."
-                  />
-                </div>
-                <div class="form-group">
-                  <label for="siswa-filter-kelas" class="form-label">Saring Kelas</label>
-                  <select id="siswa-filter-kelas" class="form-input">
-                    <option value="">Semua Kelas</option>
-                  </select>
-                </div>
-                <div class="form-group form-group--end">
-                  <div class="button-pair">
-                    <label for="input-import-excel" class="btn btn-secondary btn-file">
-                      Impor Excel Siswa
-                      <input
-                        type="file"
-                        id="input-import-excel"
-                        accept=".xlsx,.xls,.csv"
-                        hidden
-                      />
-                    </label>
-                    <button type="button" id="btn-template-excel" class="btn btn-ghost">
-                      Contoh Excel
-                    </button>
+            <!-- Tab Khusus Admin: Daftar Siswa vs Akun Guru & Wali Kelas -->
+            <div id="admin-data-tabs" class="segmented-tabs" role="tablist" aria-label="Kelola Data Sekolah" hidden>
+              <button
+                type="button"
+                class="segmented-tab is-active"
+                id="tab-admin-siswa"
+                data-admin-tab="siswa"
+                role="tab"
+                aria-selected="true"
+              >
+                Daftar Siswa
+              </button>
+              <button
+                type="button"
+                class="segmented-tab"
+                id="tab-admin-akun"
+                data-admin-tab="akun"
+                role="tab"
+                aria-selected="false"
+              >
+                Akun Guru &amp; Wali Kelas
+              </button>
+            </div>
+
+            <!-- Panel Daftar Siswa -->
+            <div id="panel-data-siswa">
+              <div class="panel">
+                <div class="filter-grid filter-grid--3">
+                  <div class="form-group">
+                    <label for="siswa-cari" class="form-label">Cari Nama atau NIS</label>
+                    <input
+                      type="search"
+                      id="siswa-cari"
+                      class="form-input"
+                      placeholder="Ketik nama siswa..."
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="siswa-filter-kelas" class="form-label">Saring Kelas</label>
+                    <select id="siswa-filter-kelas" class="form-input">
+                      <option value="">Semua Kelas</option>
+                    </select>
+                  </div>
+                  <div class="form-group form-group--end" id="admin-excel-controls">
+                    <div class="button-pair">
+                      <label for="input-import-excel" class="btn btn-secondary btn-file">
+                        Impor Excel Siswa
+                        <input
+                          type="file"
+                          id="input-import-excel"
+                          accept=".xlsx,.xls,.csv"
+                          hidden
+                        />
+                      </label>
+                      <button type="button" id="btn-template-excel" class="btn btn-ghost">
+                        Contoh Excel
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
+
+              <div id="siswa-container" class="data-area"></div>
             </div>
 
-            <div id="siswa-container" class="data-area"></div>
+            <!-- Panel Akun Guru & Wali Kelas (Khusus Admin) -->
+            <div id="panel-data-akun" hidden>
+              <div id="akun-container" class="data-area"></div>
+            </div>
           </section>
         </main>
       </div>

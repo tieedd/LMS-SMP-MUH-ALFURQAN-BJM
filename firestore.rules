@@ -29,27 +29,60 @@ service cloud.firestore {
       return resource.data;
     }
 
+    function userDocPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function hasActiveProfile() {
+      return isVerifiedUser() &&
+        exists(userDocPath(request.auth.uid)) &&
+        get(userDocPath(request.auth.uid)).data.aktif == true;
+    }
+
+    function myProfile() {
+      return get(userDocPath(request.auth.uid)).data;
+    }
+
     function isAdmin() {
       return isVerifiedUser() && (
         request.auth.token.email == 'darry.hafidh20@admin.sd.belajar.id' ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (hasActiveProfile() && myProfile().role == 'admin')
       );
     }
 
-    function siswaBelongsToOwner(siswaId, ownerId) {
+    function isGuru() {
+      return hasActiveProfile() && myProfile().role == 'guru';
+    }
+
+    function isWaliKelas() {
+      return hasActiveProfile() && myProfile().role == 'wali_kelas';
+    }
+
+    function siswaBelongsToKelas(siswaId, kelas) {
       return isValidId(siswaId) &&
         exists(/databases/$(database)/documents/siswa/$(siswaId)) &&
-        get(/databases/$(database)/documents/siswa/$(siswaId)).data.ownerId == ownerId;
+        get(/databases/$(database)/documents/siswa/$(siswaId)).data.kelas == kelas;
+    }
+
+    function isValidStringList(arr, maxItems, maxItemLen) {
+      return arr is list &&
+        arr.size() <= maxItems &&
+        (arr.size() == 0 || (arr[0] is string && arr[0].size() >= 1 && arr[0].size() <= maxItemLen));
     }
 
     // --- Validation Blueprints ---
     function isValidUser(data, userId) {
-      return data.keys().hasAll(['uid', 'nama', 'role', 'createdAt', 'updatedAt']) &&
-        data.keys().hasOnly(['uid', 'nama', 'email', 'role', 'createdAt', 'updatedAt']) &&
+      return data.keys().hasAll(['uid', 'nama', 'email', 'role', 'kelasDiampu', 'mapelDiampu', 'waliKelas', 'aktif', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'nama', 'email', 'role', 'kelasDiampu', 'mapelDiampu', 'waliKelas', 'aktif', 'createdAt', 'updatedAt']) &&
         data.uid is string && data.uid == userId &&
         data.nama is string && data.nama.size() >= 1 && data.nama.size() <= 100 &&
-        (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
-        data.role is string && data.role in ['guru', 'admin'] &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 150 &&
+        data.role is string && data.role in ['admin', 'guru', 'wali_kelas'] &&
+        isValidStringList(data.kelasDiampu, 20, 20) &&
+        isValidStringList(data.mapelDiampu, 20, 60) &&
+        data.waliKelas is string && data.waliKelas.size() <= 20 &&
+        data.aktif is bool &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
@@ -108,75 +141,86 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
 
+    // Users: Profil & Peran (Admin kelola semua akun; Pengguna hanya bisa baca profil sendiri)
     match /users/{userId} {
       allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
       allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
       allow create: if isVerifiedUser() &&
         isValidId(userId) &&
         isValidUser(incoming(), userId) &&
-        request.auth.uid == userId &&
-        (incoming().role == 'guru' || isAdmin()) &&
+        isAdmin() &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
       allow update: if isVerifiedUser() &&
         isValidId(userId) &&
         isValidUser(incoming(), userId) &&
-        (
-          isAdmin() ||
-          (
-            request.auth.uid == userId &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['nama', 'email', 'updatedAt']) &&
-            incoming().uid == existing().uid &&
-            incoming().role == existing().role &&
-            incoming().createdAt == existing().createdAt
-          )
-        ) &&
+        isAdmin() &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time;
-      allow delete: if isAdmin() && isValidId(userId);
+      allow delete: if isAdmin() && isValidId(userId) && userId != request.auth.uid;
     }
 
+    // Siswa: Admin kelola semua data & impor; Guru baca kelas yang diajar; Wali Kelas baca kelasnya
     match /siswa/{siswaId} {
-      allow get: if isSignedIn() && isValidId(siswaId) && (resource.data.ownerId == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
-      allow create: if isVerifiedUser() &&
+      allow get: if isVerifiedUser() && isValidId(siswaId) && (
+        isAdmin() ||
+        (isGuru() && resource.data.kelas in myProfile().kelasDiampu) ||
+        (isWaliKelas() && resource.data.kelas == myProfile().waliKelas)
+      );
+      allow list: if isVerifiedUser() && (
+        isAdmin() ||
+        (isGuru() && resource.data.kelas in myProfile().kelasDiampu) ||
+        (isWaliKelas() && resource.data.kelas == myProfile().waliKelas)
+      );
+      allow create: if isAdmin() &&
         isValidId(siswaId) &&
         isValidSiswa(incoming()) &&
-        (incoming().ownerId == request.auth.uid || isAdmin()) &&
+        incoming().ownerId == request.auth.uid &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
-      allow update: if isVerifiedUser() &&
+      allow update: if isAdmin() &&
         isValidId(siswaId) &&
         isValidSiswa(incoming()) &&
-        (
-          isAdmin() ||
-          (
-            existing().ownerId == request.auth.uid &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['nis', 'nama', 'kelas', 'jenisKelamin', 'aktif', 'updatedAt']) &&
-            incoming().ownerId == existing().ownerId &&
-            incoming().createdAt == existing().createdAt
-          )
-        ) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['nis', 'nama', 'kelas', 'jenisKelamin', 'aktif', 'updatedAt']) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time;
-      allow delete: if isVerifiedUser() && isValidId(siswaId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin() && isValidId(siswaId);
     }
 
+    // Absensi: Admin semua kelas; Guru hanya kelas yang diajar; Wali Kelas hanya baca rekap kelasnya
     match /absensi/{absensiId} {
-      allow get: if isSignedIn() && isValidId(absensiId) && (resource.data.ownerId == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow get: if isVerifiedUser() && isValidId(absensiId) && (
+        isAdmin() ||
+        (isGuru() && resource.data.kelas in myProfile().kelasDiampu) ||
+        (isWaliKelas() && resource.data.kelas == myProfile().waliKelas)
+      );
+      allow list: if isVerifiedUser() && (
+        isAdmin() ||
+        (isGuru() && resource.data.kelas in myProfile().kelasDiampu) ||
+        (isWaliKelas() && resource.data.kelas == myProfile().waliKelas)
+      );
       allow create: if isVerifiedUser() &&
         isValidId(absensiId) &&
         isValidAbsensi(incoming()) &&
-        (incoming().ownerId == request.auth.uid || isAdmin()) &&
+        incoming().ownerId == request.auth.uid &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time &&
-        siswaBelongsToOwner(incoming().siswaId, incoming().ownerId);
+        siswaBelongsToKelas(incoming().siswaId, incoming().kelas) &&
+        (
+          isAdmin() ||
+          (isGuru() && incoming().kelas in myProfile().kelasDiampu)
+        );
       allow update: if isVerifiedUser() &&
         isValidId(absensiId) &&
         isValidAbsensi(incoming()) &&
         (
           isAdmin() ||
           (
-            existing().ownerId == request.auth.uid &&
+            isGuru() &&
+            existing().kelas in myProfile().kelasDiampu &&
+            incoming().kelas in myProfile().kelasDiampu &&
             incoming().diff(existing()).affectedKeys().hasOnly(['namaSiswa', 'kelas', 'status', 'keterangan', 'updatedAt']) &&
             incoming().ownerId == existing().ownerId &&
             incoming().siswaId == existing().siswaId &&
@@ -185,26 +229,46 @@ service cloud.firestore {
           )
         ) &&
         incoming().updatedAt == request.time;
-      allow delete: if isVerifiedUser() && isValidId(absensiId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow delete: if isVerifiedUser() && isValidId(absensiId) && (
+        isAdmin() ||
+        (isGuru() && existing().kelas in myProfile().kelasDiampu)
+      );
     }
 
+    // Nilai: Admin semua; Guru hanya mapel & kelas yang diajar; Wali Kelas hanya baca rekap kelasnya
     match /nilai/{nilaiId} {
-      allow get: if isSignedIn() && isValidId(nilaiId) && (resource.data.ownerId == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow get: if isVerifiedUser() && isValidId(nilaiId) && (
+        isAdmin() ||
+        (isGuru() && resource.data.kelas in myProfile().kelasDiampu && resource.data.mapel in myProfile().mapelDiampu) ||
+        (isWaliKelas() && resource.data.kelas == myProfile().waliKelas)
+      );
+      allow list: if isVerifiedUser() && (
+        isAdmin() ||
+        (isGuru() && resource.data.kelas in myProfile().kelasDiampu && resource.data.mapel in myProfile().mapelDiampu) ||
+        (isWaliKelas() && resource.data.kelas == myProfile().waliKelas)
+      );
       allow create: if isVerifiedUser() &&
         isValidId(nilaiId) &&
         isValidNilai(incoming()) &&
-        (incoming().ownerId == request.auth.uid || isAdmin()) &&
+        incoming().ownerId == request.auth.uid &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time &&
-        siswaBelongsToOwner(incoming().siswaId, incoming().ownerId);
+        siswaBelongsToKelas(incoming().siswaId, incoming().kelas) &&
+        (
+          isAdmin() ||
+          (isGuru() && incoming().kelas in myProfile().kelasDiampu && incoming().mapel in myProfile().mapelDiampu)
+        );
       allow update: if isVerifiedUser() &&
         isValidId(nilaiId) &&
         isValidNilai(incoming()) &&
         (
           isAdmin() ||
           (
-            existing().ownerId == request.auth.uid &&
+            isGuru() &&
+            existing().kelas in myProfile().kelasDiampu &&
+            existing().mapel in myProfile().mapelDiampu &&
+            incoming().kelas in myProfile().kelasDiampu &&
+            incoming().mapel in myProfile().mapelDiampu &&
             incoming().diff(existing()).affectedKeys().hasOnly(['namaSiswa', 'kelas', 'mapel', 'jenis', 'judul', 'tanggal', 'skor', 'catatan', 'updatedAt']) &&
             incoming().ownerId == existing().ownerId &&
             incoming().siswaId == existing().siswaId &&
@@ -212,7 +276,10 @@ service cloud.firestore {
           )
         ) &&
         incoming().updatedAt == request.time;
-      allow delete: if isVerifiedUser() && isValidId(nilaiId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow delete: if isVerifiedUser() && isValidId(nilaiId) && (
+        isAdmin() ||
+        (isGuru() && existing().kelas in myProfile().kelasDiampu && existing().mapel in myProfile().mapelDiampu)
+      );
     }
   }
 }

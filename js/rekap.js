@@ -10,6 +10,9 @@ import {
   bulanIni,
   formatBulanIndonesia,
   getDaftarSiswa,
+  getPeranPengguna,
+  getKelasYangDiizinkan,
+  getMapelYangDiizinkan,
   tampilkanSukses,
   tampilkanError
 } from './ui.js';
@@ -87,7 +90,7 @@ function renderRekapAbsen() {
       <div class="empty-state">
         <h2 class="empty-title">Belum Ada Data Rekap Absen</h2>
         <p class="empty-desc">
-          Tambahkan siswa dan catat absen harian terlebih dahulu agar rekap muncul di sini.
+          Belum ada data siswa atau catatan absen pada kelas yang dipilih.
         </p>
       </div>
     `;
@@ -181,7 +184,11 @@ function sinkronDropdownMapelRekap() {
   if (!select) return;
 
   const prev = select.value;
+  const mapelDiizinkan = getMapelYangDiizinkan();
   const mapelSet = new Set(cacheNilai.map((n) => n.mapel).filter(Boolean));
+  if (Array.isArray(mapelDiizinkan)) {
+    mapelDiizinkan.forEach((m) => mapelSet.add(m));
+  }
   const mapelList = Array.from(mapelSet).sort((a, b) => a.localeCompare(b, 'id'));
 
   select.innerHTML = '<option value="">Semua Mata Pelajaran</option>';
@@ -251,7 +258,7 @@ function renderRekapNilai() {
       <div class="empty-state">
         <h2 class="empty-title">Belum Ada Data Rekap Nilai</h2>
         <p class="empty-desc">
-          Tambahkan siswa dan isi nilai di menu Nilai terlebih dahulu agar rekap muncul di sini.
+          Belum ada data siswa atau nilai pada kelas yang dipilih.
         </p>
       </div>
     `;
@@ -366,21 +373,62 @@ function aturTabRekap(tab) {
 }
 
 export async function muatHalamanRekap() {
-  const { auth, db } = getFirebaseServices();
-  const user = auth.currentUser;
-  if (!user) return;
+  const { db } = getFirebaseServices();
+  const role = getPeranPengguna();
+  const kelasDiizinkan = getKelasYangDiizinkan();
+  const mapelDiizinkan = getMapelYangDiizinkan();
+
+  if (Array.isArray(kelasDiizinkan) && kelasDiizinkan.length === 0) {
+    cacheAbsensi = [];
+    cacheNilai = [];
+    sinkronDropdownMapelRekap();
+    renderRekapAbsen();
+    renderRekapNilai();
+    return;
+  }
 
   try {
-    const [absSnap, nilSnap] = await Promise.all([
-      getDocs(query(collection(db, 'absensi'), where('ownerId', '==', user.uid))),
-      getDocs(query(collection(db, 'nilai'), where('ownerId', '==', user.uid)))
-    ]);
-
     cacheAbsensi = [];
-    absSnap.forEach((d) => cacheAbsensi.push({ id: d.id, ...d.data() }));
-
     cacheNilai = [];
-    nilSnap.forEach((d) => cacheNilai.push({ id: d.id, ...d.data() }));
+
+    if (role === 'admin') {
+      const [absSnap, nilSnap] = await Promise.all([
+        getDocs(collection(db, 'absensi')),
+        getDocs(collection(db, 'nilai'))
+      ]);
+      absSnap.forEach((d) => cacheAbsensi.push({ id: d.id, ...d.data() }));
+      nilSnap.forEach((d) => cacheNilai.push({ id: d.id, ...d.data() }));
+    } else if (role === 'wali_kelas') {
+      const waliKelas = kelasDiizinkan[0];
+      const [absSnap, nilSnap] = await Promise.all([
+        getDocs(query(collection(db, 'absensi'), where('kelas', '==', waliKelas))),
+        getDocs(query(collection(db, 'nilai'), where('kelas', '==', waliKelas)))
+      ]);
+      absSnap.forEach((d) => cacheAbsensi.push({ id: d.id, ...d.data() }));
+      nilSnap.forEach((d) => cacheNilai.push({ id: d.id, ...d.data() }));
+    } else {
+      // Guru: baca absensi & nilai hanya untuk kelas & mapel yang diajar
+      const absPromise = getDocs(
+        query(collection(db, 'absensi'), where('kelas', 'in', kelasDiizinkan.slice(0, 30)))
+      );
+      const nilPromises = Array.isArray(mapelDiizinkan) && mapelDiizinkan.length > 0
+        ? mapelDiizinkan.map((mapel) =>
+            getDocs(
+              query(
+                collection(db, 'nilai'),
+                where('kelas', 'in', kelasDiizinkan.slice(0, 30)),
+                where('mapel', '==', mapel)
+              )
+            )
+          )
+        : [];
+
+      const [absSnap, ...nilSnaps] = await Promise.all([absPromise, ...nilPromises]);
+      absSnap.forEach((d) => cacheAbsensi.push({ id: d.id, ...d.data() }));
+      nilSnaps.forEach((snap) => {
+        snap.forEach((d) => cacheNilai.push({ id: d.id, ...d.data() }));
+      });
+    }
 
     sinkronDropdownMapelRekap();
   } catch (error) {

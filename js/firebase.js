@@ -1,5 +1,13 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import { getAuth } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import {
+  initializeApp,
+  deleteApp
+} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  signOut
+} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   getFirestore,
   doc,
@@ -100,6 +108,34 @@ export function getFirebaseServices() {
   return cachedServices;
 }
 
+/**
+ * Membuat akun Firebase Auth baru lewat instance sementara agar Admin tidak ikut keluar.
+ */
+export async function buatAkunAuthOlehAdmin(email, password) {
+  const { config } = getFirebaseServices();
+  const secondaryApp = initializeApp(config, `AdminBuatAkun_${Date.now()}`);
+  const secondaryAuth = getAuth(secondaryApp);
+  secondaryAuth.languageCode = 'id';
+
+  try {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    try {
+      await sendEmailVerification(cred.user);
+    } catch {
+      // Tetap kembalikan UID walau email verifikasi tertunda
+    }
+    const newUid = cred.user.uid;
+    await signOut(secondaryAuth);
+    return newUid;
+  } finally {
+    try {
+      await deleteApp(secondaryApp);
+    } catch {
+      // Abaikan jika sudah dihapus
+    }
+  }
+}
+
 export function pesanRamahError(error) {
   const code = error?.code || '';
   const msg = error?.message || String(error || '');
@@ -117,26 +153,29 @@ export function pesanRamahError(error) {
   ) {
     return 'Email atau kata sandi belum cocok. Silakan periksa kembali dengan teliti.';
   }
+  if (code === 'auth/user-disabled') {
+    return 'Akun ini sedang dinonaktifkan. Silakan hubungi Admin sekolah.';
+  }
   if (code === 'auth/email-already-in-use') {
-    return 'Email ini sudah terdaftar. Silakan langsung klik "Masuk dengan Email".';
+    return 'Email ini sudah terdaftar di sistem login Firebase.';
   }
   if (code === 'auth/weak-password') {
     return 'Kata sandi terlalu singkat. Gunakan minimal 6 huruf atau angka.';
   }
-  if (code === 'auth/invalid-email') {
+  if (code === 'auth/invalid-email' || code === 'auth/missing-email') {
     return 'Penulisan alamat email belum tepat. Contoh yang benar: nama@gmail.com.';
   }
   if (code === 'auth/operation-not-allowed') {
-    return 'Metode masuk dengan Email belum diaktifkan di Firebase Console. Gunakan "Masuk dengan Akun Google" atau aktifkan Email/Password di menu Authentication Firebase.';
+    return 'Login Email/Kata Sandi belum diaktifkan di Firebase Console. Aktifkan di menu Authentication > Sign-in method > Email/Password.';
   }
   if (code === 'auth/network-request-failed' || msg.includes('offline')) {
     return 'Koneksi internet sedang terputus. Periksa Wi-Fi atau paket data Anda, lalu coba lagi.';
   }
   if (code === 'auth/too-many-requests') {
-    return 'Terlalu banyak percobaan masuk. Tunggu beberapa menit sebelum mencoba lagi.';
+    return 'Terlalu banyak percobaan. Tunggu beberapa menit sebelum mencoba lagi.';
   }
   if (code === 'permission-denied' || msg.includes('Missing or insufficient permissions')) {
-    return 'Maaf, Anda belum memiliki izin untuk menyimpan atau membuka data ini. Pastikan Anda sudah masuk dengan akun yang terverifikasi.';
+    return 'Maaf, Anda belum memiliki izin untuk membuka atau mengubah data ini sesuai peran akun Anda.';
   }
   if (code === 'unavailable' || code === 'deadline-exceeded') {
     return 'Server database sedang sibuk atau koneksi lambat. Silakan coba beberapa saat lagi.';

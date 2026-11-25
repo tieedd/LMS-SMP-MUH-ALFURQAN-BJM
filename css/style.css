@@ -1121,6 +1121,13 @@ a:focus-visible {
     text-overflow: ellipsis;
   }
 
+  .teacher-role {
+    margin: 2px 0 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent-primary);
+  }
+
   .teacher-email {
     margin: 2px 0 0;
     font-size: 14px;
@@ -1162,7 +1169,7 @@ a:focus-visible {
   }
 
   .segmented-tabs {
-    max-width: 420px;
+    max-width: 480px;
   }
 
   /* Di PC, sembunyikan tampilan kartu dan tampilkan tabel */
@@ -1185,6 +1192,50 @@ a:focus-visible {
     right: 24px;
     top: 24px;
   }
+}
+
+.login-footnote {
+  margin: 18px 0 0;
+  font-size: 15px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.bottom-nav.is-two-cols {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.checkbox-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.checkbox-option input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.checkbox-option:has(input:checked) {
+  border-color: var(--accent-primary);
+  background-color: var(--accent-primary-soft);
 }
 
 @media (prefers-reduced-motion: reduce) {

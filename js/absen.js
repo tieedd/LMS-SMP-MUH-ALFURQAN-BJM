@@ -18,6 +18,9 @@ import {
   tanggalHariIni,
   formatTanggalIndonesia,
   getDaftarSiswa,
+  getPeranPengguna,
+  getKelasYangDiizinkan,
+  isAdmin,
   tampilkanSukses,
   tampilkanError,
   aturMenuAktif,
@@ -88,32 +91,59 @@ function renderDaftarAbsen() {
   const saveBar = document.getElementById('absen-save-bar');
   if (!container) return;
 
-  const semuaSiswa = getDaftarSiswa();
-  if (semuaSiswa.length === 0) {
+  const kelasDiizinkan = getKelasYangDiizinkan();
+  if (Array.isArray(kelasDiizinkan) && kelasDiizinkan.length === 0) {
     if (saveBar) saveBar.hidden = true;
     container.innerHTML = `
       <div class="empty-state">
-        <h2 class="empty-title">Belum Ada Data Siswa</h2>
+        <h2 class="empty-title">Belum Ada Kelas yang Diajar</h2>
         <p class="empty-desc">
-          Untuk mulai mencatat absen harian, silakan isi daftar siswa terlebih dahulu di menu Data
-          Siswa, atau gunakan 10 siswa contoh untuk mencoba.
+          Admin sekolah belum mengatur daftar kelas yang Anda ajar. Silakan hubungi Admin SMP
+          Muhammadiyah Al Furqan.
         </p>
-        <div class="empty-actions">
-          <button type="button" id="btn-absen-ke-siswa" class="btn btn-primary">
-            Buka Menu Data Siswa
-          </button>
-          <button type="button" id="btn-absen-contoh" class="btn btn-secondary">
-            Isi 10 Siswa Contoh
-          </button>
-        </div>
       </div>
     `;
-    container
-      .querySelector('#btn-absen-ke-siswa')
-      ?.addEventListener('click', () => aturMenuAktif('siswa'));
-    container
-      .querySelector('#btn-absen-contoh')
-      ?.addEventListener('click', isiDataContohSiswa);
+    perbaruiRingkasan();
+    return;
+  }
+
+  const semuaSiswa = getDaftarSiswa();
+  if (semuaSiswa.length === 0) {
+    if (saveBar) saveBar.hidden = true;
+    if (isAdmin()) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <h2 class="empty-title">Belum Ada Data Siswa</h2>
+          <p class="empty-desc">
+            Untuk mulai mencatat absen harian, silakan isi daftar siswa terlebih dahulu di menu
+            Data Siswa, atau gunakan 10 siswa contoh untuk mencoba.
+          </p>
+          <div class="empty-actions">
+            <button type="button" id="btn-absen-ke-siswa" class="btn btn-primary">
+              Buka Menu Data Siswa
+            </button>
+            <button type="button" id="btn-absen-contoh" class="btn btn-secondary">
+              Isi 10 Siswa Contoh
+            </button>
+          </div>
+        </div>
+      `;
+      container
+        .querySelector('#btn-absen-ke-siswa')
+        ?.addEventListener('click', () => aturMenuAktif('siswa'));
+      container
+        .querySelector('#btn-absen-contoh')
+        ?.addEventListener('click', isiDataContohSiswa);
+    } else {
+      container.innerHTML = `
+        <div class="empty-state">
+          <h2 class="empty-title">Belum Ada Siswa di Kelas Anda</h2>
+          <p class="empty-desc">
+            Admin sekolah belum memasukkan daftar siswa untuk kelas yang Anda ajar.
+          </p>
+        </div>
+      `;
+    }
     perbaruiRingkasan();
     return;
   }
@@ -124,7 +154,7 @@ function renderDaftarAbsen() {
     container.innerHTML = `
       <div class="empty-state">
         <h2 class="empty-title">Tidak Ada Siswa di Kelas Ini</h2>
-        <p class="empty-desc">Silakan pilih kelas lain atau tambah siswa di menu Data Siswa.</p>
+        <p class="empty-desc">Silakan pilih kelas lain pada daftar kelas di atas.</p>
       </div>
     `;
     perbaruiRingkasan();
@@ -264,16 +294,27 @@ export async function muatHalamanAbsen() {
     return;
   }
 
-  const { auth, db } = getFirebaseServices();
-  const user = auth.currentUser;
-  if (!user) return;
+  const { db } = getFirebaseServices();
+  const role = getPeranPengguna();
+  const kelasDiizinkan = getKelasYangDiizinkan();
+
+  if (Array.isArray(kelasDiizinkan) && kelasDiizinkan.length === 0) {
+    renderDaftarAbsen();
+    return;
+  }
 
   try {
-    const q = query(
-      collection(db, 'absensi'),
-      where('ownerId', '==', user.uid),
-      where('tanggal', '==', tanggal)
-    );
+    let q;
+    if (role === 'admin') {
+      q = query(collection(db, 'absensi'), where('tanggal', '==', tanggal));
+    } else {
+      q = query(
+        collection(db, 'absensi'),
+        where('tanggal', '==', tanggal),
+        where('kelas', 'in', kelasDiizinkan.slice(0, 30))
+      );
+    }
+
     const snap = await getDocs(q);
     snap.forEach((d) => {
       const val = d.data();
@@ -344,7 +385,8 @@ async function simpanAbsen() {
             updatedAt: serverTimestamp()
           });
         } else {
-          const newDocId = buatIdAman(`${user.uid.slice(0, 20)}_${tanggal}_${siswa.id}`);
+          // ID unik per tanggal & siswa agar tidak ganda walau diinput ulang
+          const newDocId = buatIdAman(`${tanggal}_${siswa.id}`);
           const ref = doc(db, 'absensi', newDocId);
           batch.set(ref, {
             ownerId: user.uid,
@@ -395,7 +437,9 @@ export function initHalamanAbsen() {
   document.getElementById('btn-semua-hadir')?.addEventListener('click', () => {
     const siswaList = getSiswaTersaring();
     siswaList.forEach((s) => setStatusSiswa(s.id, 'Hadir'));
-    tampilkanSukses('Semua siswa pada daftar ini sudah ditandai Hadir. Jangan lupa tekan Simpan Absen.');
+    tampilkanSukses(
+      'Semua siswa pada daftar ini sudah ditandai Hadir. Jangan lupa tekan Simpan Absen.'
+    );
   });
 
   document.getElementById('btn-simpan-absen')?.addEventListener('click', simpanAbsen);

@@ -9,10 +9,14 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { getFirebaseServices, OperationType, handleFirestoreError } from './firebase.js';
 import {
+  DAFTAR_MAPEL_STANDAR,
   escapeHtml,
   tanggalHariIni,
   formatTanggalIndonesia,
   getDaftarSiswa,
+  getKelasYangDiizinkan,
+  getMapelYangDiizinkan,
+  isAdmin,
   tampilkanSukses,
   tampilkanError,
   konfirmasiAksi,
@@ -23,10 +27,61 @@ import {
 let semuaNilaiCache = [];
 let nilaiDraft = new Map(); // siswaId -> { skor, catatan, docId }
 
+function sinkronkanDropdownMapelInput() {
+  const select = document.getElementById('nilai-mapel');
+  const groupCustom = document.getElementById('group-nilai-mapel-custom');
+  if (!select) return;
+
+  const prev = select.value;
+  const mapelDiizinkan = getMapelYangDiizinkan();
+  select.innerHTML = '';
+
+  if (Array.isArray(mapelDiizinkan)) {
+    if (mapelDiizinkan.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Belum ada mapel yang diampu';
+      select.appendChild(opt);
+    } else {
+      mapelDiizinkan.forEach((m) => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        select.appendChild(opt);
+      });
+    }
+    if (groupCustom) groupCustom.hidden = true;
+    if (prev && mapelDiizinkan.includes(prev)) {
+      select.value = prev;
+    }
+    return;
+  }
+
+  // Untuk Admin: tampilkan semua mapel standar + opsi lainnya
+  DAFTAR_MAPEL_STANDAR.forEach((m) => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m;
+    select.appendChild(opt);
+  });
+
+  const optCustom = document.createElement('option');
+  optCustom.value = '__lainnya__';
+  optCustom.textContent = 'Mata Pelajaran Lainnya...';
+  select.appendChild(optCustom);
+
+  if (prev && (DAFTAR_MAPEL_STANDAR.includes(prev) || prev === '__lainnya__')) {
+    select.value = prev;
+  }
+  if (groupCustom) {
+    groupCustom.hidden = select.value !== '__lainnya__';
+  }
+}
+
 function getMapelAktif() {
   const select = document.getElementById('nilai-mapel');
   const custom = document.getElementById('nilai-mapel-custom');
-  if (!select) return 'Matematika';
+  if (!select) return '';
   if (select.value === '__lainnya__') {
     return (custom?.value || '').trim();
   }
@@ -78,31 +133,62 @@ function renderInputNilai() {
   const saveBar = document.getElementById('nilai-save-bar');
   if (!container) return;
 
-  const semuaSiswa = getDaftarSiswa();
-  if (semuaSiswa.length === 0) {
+  const kelasDiizinkan = getKelasYangDiizinkan();
+  const mapelDiizinkan = getMapelYangDiizinkan();
+
+  if (
+    (Array.isArray(kelasDiizinkan) && kelasDiizinkan.length === 0) ||
+    (Array.isArray(mapelDiizinkan) && mapelDiizinkan.length === 0)
+  ) {
     if (saveBar) saveBar.hidden = true;
     container.innerHTML = `
       <div class="empty-state">
-        <h2 class="empty-title">Belum Ada Data Siswa</h2>
+        <h2 class="empty-title">Kelas atau Mata Pelajaran Belum Diatur</h2>
         <p class="empty-desc">
-          Tambahkan siswa terlebih dahulu di menu Data Siswa agar Anda dapat menginput nilai mereka.
+          Admin sekolah belum mengatur kelas yang diajar atau mata pelajaran yang Anda ampu. Silakan
+          hubungi Admin SMP Muhammadiyah Al Furqan.
         </p>
-        <div class="empty-actions">
-          <button type="button" id="btn-nilai-ke-siswa" class="btn btn-primary">
-            Buka Menu Data Siswa
-          </button>
-          <button type="button" id="btn-nilai-contoh" class="btn btn-secondary">
-            Isi 10 Siswa Contoh
-          </button>
-        </div>
       </div>
     `;
-    container
-      .querySelector('#btn-nilai-ke-siswa')
-      ?.addEventListener('click', () => aturMenuAktif('siswa'));
-    container
-      .querySelector('#btn-nilai-contoh')
-      ?.addEventListener('click', isiDataContohSiswa);
+    return;
+  }
+
+  const semuaSiswa = getDaftarSiswa();
+  if (semuaSiswa.length === 0) {
+    if (saveBar) saveBar.hidden = true;
+    if (isAdmin()) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <h2 class="empty-title">Belum Ada Data Siswa</h2>
+          <p class="empty-desc">
+            Tambahkan siswa terlebih dahulu di menu Data Siswa agar Anda dapat menginput nilai mereka.
+          </p>
+          <div class="empty-actions">
+            <button type="button" id="btn-nilai-ke-siswa" class="btn btn-primary">
+              Buka Menu Data Siswa
+            </button>
+            <button type="button" id="btn-nilai-contoh" class="btn btn-secondary">
+              Isi 10 Siswa Contoh
+            </button>
+          </div>
+        </div>
+      `;
+      container
+        .querySelector('#btn-nilai-ke-siswa')
+        ?.addEventListener('click', () => aturMenuAktif('siswa'));
+      container
+        .querySelector('#btn-nilai-contoh')
+        ?.addEventListener('click', isiDataContohSiswa);
+    } else {
+      container.innerHTML = `
+        <div class="empty-state">
+          <h2 class="empty-title">Belum Ada Siswa di Kelas Anda</h2>
+          <p class="empty-desc">
+            Admin sekolah belum memasukkan daftar siswa untuk kelas yang Anda ajar.
+          </p>
+        </div>
+      `;
+    }
     return;
   }
 
@@ -402,7 +488,7 @@ function renderRiwayatNilai() {
         if (adaDiPilihan) {
           selectMapel.value = g.mapel;
           if (groupCustom) groupCustom.hidden = true;
-        } else {
+        } else if (isAdmin()) {
           selectMapel.value = '__lainnya__';
           if (groupCustom) groupCustom.hidden = false;
           if (inputCustom) inputCustom.value = g.mapel;
@@ -460,15 +546,44 @@ export async function muatHalamanNilai() {
     tanggalInput.value = tanggalHariIni();
   }
 
-  const { auth, db } = getFirebaseServices();
-  const user = auth.currentUser;
-  if (!user) return;
+  sinkronkanDropdownMapelInput();
+
+  const kelasDiizinkan = getKelasYangDiizinkan();
+  const mapelDiizinkan = getMapelYangDiizinkan();
+
+  if (
+    (Array.isArray(kelasDiizinkan) && kelasDiizinkan.length === 0) ||
+    (Array.isArray(mapelDiizinkan) && mapelDiizinkan.length === 0)
+  ) {
+    semuaNilaiCache = [];
+    isiDraftDariFilterSaatIni();
+    renderRiwayatNilai();
+    return;
+  }
+
+  const { db } = getFirebaseServices();
 
   try {
-    const q = query(collection(db, 'nilai'), where('ownerId', '==', user.uid));
-    const snap = await getDocs(q);
     const items = [];
-    snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
+    if (isAdmin()) {
+      const snap = await getDocs(collection(db, 'nilai'));
+      snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
+    } else {
+      // Query per mapel yang diampu agar sesuai aturan keamanan Firestore dan batas 1 klausa "in"
+      const queries = mapelDiizinkan.map((mapel) =>
+        getDocs(
+          query(
+            collection(db, 'nilai'),
+            where('kelas', 'in', kelasDiizinkan.slice(0, 30)),
+            where('mapel', '==', mapel)
+          )
+        )
+      );
+      const snapshots = await Promise.all(queries);
+      snapshots.forEach((snap) => {
+        snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
+      });
+    }
     semuaNilaiCache = items;
   } catch (error) {
     try {
@@ -494,7 +609,7 @@ async function simpanSemuaNilai() {
     return;
   }
   if (!mapel) {
-    tampilkanError('Nama mata pelajaran belum diisi.');
+    tampilkanError('Nama mata pelajaran belum diisi atau belum tersedia.');
     return;
   }
   if (!judul) {

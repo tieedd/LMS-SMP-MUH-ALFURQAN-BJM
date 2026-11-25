@@ -13,12 +13,12 @@
 // ============================================================================
 
 const firebaseConfig = {
-  apiKey: "ISI_DENGAN_API_KEY_ANDA",
-  authDomain: "nama-project-anda.firebaseapp.com",
-  projectId: "nama-project-anda",
-  storageBucket: "nama-project-anda.firebasestorage.app",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef1234567890",
+  apiKey: "AIzaSyBW08hodRXrWvvjuvz5iDKHDltP1IPRUAw",
+  authDomain: "gen-lang-client-0137016399.firebaseapp.com",
+  projectId: "gen-lang-client-0137016399",
+  storageBucket: "gen-lang-client-0137016399.firebasestorage.app",
+  messagingSenderId: "540555040542",
+  appId: "1:540555040542:web:43bd47113190dcf3b61b0f"
 
   // Opsional: Biarkan kosong ("") jika memakai database Firestore standar "(default)".
   // Isi hanya jika Anda membuat database Firestore dengan nama khusus.

@@ -2,6 +2,7 @@ import {
   collection,
   getDocs,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   doc,
@@ -10,15 +11,25 @@ import {
   writeBatch,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
-import { getFirebaseServices, OperationType, handleFirestoreError } from './firebase.js';
+import { sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import {
+  getFirebaseServices,
+  OperationType,
+  handleFirestoreError,
+  buatAkunAuthOlehAdmin,
+  pesanRamahError
+} from './firebase.js';
 import { downloadTemplateSiswaExcel, parseSiswaExcelFile } from './excel.js';
 
 // ==========================================================================
-// State Bersama Data Siswa & Menu Aktif
+// State Bersama Data Siswa, Profil Pengguna & Menu Aktif
 // ==========================================================================
 
 let daftarSiswa = [];
+let daftarAkun = [];
+let profilPengguna = null;
 let menuAktif = 'absen';
+let adminTabAktif = 'siswa';
 const menuChangeCallbacks = [];
 
 const JUDUL_HALAMAN_HP = {
@@ -27,6 +38,21 @@ const JUDUL_HALAMAN_HP = {
   rekap: 'Rekap & Excel',
   siswa: 'Data Siswa'
 };
+
+export const DAFTAR_MAPEL_STANDAR = [
+  'PAI & Budi Pekerti',
+  'Kemuhammadiyahan',
+  'Bahasa Indonesia',
+  'Matematika',
+  'Bahasa Inggris',
+  'IPA',
+  'IPS',
+  'PPKn',
+  'Informatika',
+  'PJOK',
+  'Seni Budaya',
+  'Bahasa Arab'
+];
 
 const CONTOH_SISWA = [
   { nis: '2026001', nama: 'Ahmad Fauzi', kelas: '7A', jenisKelamin: 'L' },
@@ -40,6 +66,60 @@ const CONTOH_SISWA = [
   { nis: '2026009', nama: 'Umar Al Faruq', kelas: '7B', jenisKelamin: 'L' },
   { nis: '2026010', nama: 'Zahra Maulida', kelas: '7B', jenisKelamin: 'P' }
 ];
+
+// ==========================================================================
+// Pengelolaan Peran Pengguna (admin, guru, wali_kelas)
+// ==========================================================================
+
+export function setProfilPengguna(profile) {
+  profilPengguna = profile;
+}
+
+export function getProfilPengguna() {
+  return profilPengguna;
+}
+
+export function getPeranPengguna() {
+  return profilPengguna?.role || 'guru';
+}
+
+export function isAdmin() {
+  return getPeranPengguna() === 'admin';
+}
+
+export function isGuru() {
+  return getPeranPengguna() === 'guru';
+}
+
+export function isWaliKelas() {
+  return getPeranPengguna() === 'wali_kelas';
+}
+
+export function getPeranLabel(profile = profilPengguna) {
+  if (!profile) return 'Guru';
+  if (profile.role === 'admin') return 'Admin Sekolah';
+  if (profile.role === 'wali_kelas') {
+    return profile.waliKelas ? `Wali Kelas ${profile.waliKelas}` : 'Wali Kelas';
+  }
+  return 'Guru Mata Pelajaran';
+}
+
+export function getKelasYangDiizinkan() {
+  if (!profilPengguna) return [];
+  if (profilPengguna.role === 'admin') return null; // null = semua kelas
+  if (profilPengguna.role === 'wali_kelas') {
+    return profilPengguna.waliKelas ? [profilPengguna.waliKelas] : [];
+  }
+  return Array.isArray(profilPengguna.kelasDiampu) ? profilPengguna.kelasDiampu : [];
+}
+
+export function getMapelYangDiizinkan() {
+  if (!profilPengguna) return [];
+  if (profilPengguna.role === 'admin' || profilPengguna.role === 'wali_kelas') {
+    return null; // null = semua mapel
+  }
+  return Array.isArray(profilPengguna.mapelDiampu) ? profilPengguna.mapelDiampu : [];
+}
 
 // ==========================================================================
 // Helper Keamanan & Format Tanggal
@@ -194,14 +274,69 @@ export function konfirmasiAksi({ title, message, confirmLabel = 'Ya, Lanjutkan',
 }
 
 // ==========================================================================
-// Navigasi 4 Menu (HP & PC)
+// Navigasi 4 Menu & Pengaturan Tampilan Sesuai Peran
 // ==========================================================================
 
 export function onMenuChange(cb) {
   menuChangeCallbacks.push(cb);
 }
 
+export function terapkanTampilanPeran() {
+  const role = getPeranPengguna();
+  const isWali = role === 'wali_kelas';
+  const adminMode = role === 'admin';
+
+  // Wali kelas hanya melihat menu Rekap & Data Siswa
+  document.querySelectorAll('[data-menu]').forEach((btn) => {
+    const target = btn.dataset.menu;
+    if (isWali && (target === 'absen' || target === 'nilai')) {
+      btn.hidden = true;
+    } else {
+      btn.hidden = false;
+    }
+  });
+
+  const bottomNav = document.getElementById('bottom-nav');
+  if (bottomNav) {
+    bottomNav.classList.toggle('is-two-cols', isWali);
+  }
+
+  // Kontrol Admin di halaman Data Siswa
+  const adminTabs = document.getElementById('admin-data-tabs');
+  const adminExcelControls = document.getElementById('admin-excel-controls');
+  const btnTambahSiswa = document.getElementById('btn-tambah-siswa');
+  const btnTambahAkun = document.getElementById('btn-tambah-akun');
+  const descEl = document.getElementById('siswa-page-desc');
+
+  if (adminTabs) adminTabs.hidden = !adminMode;
+  if (adminExcelControls) adminExcelControls.hidden = !adminMode;
+
+  if (!adminMode) {
+    adminTabAktif = 'siswa';
+    if (btnTambahSiswa) btnTambahSiswa.hidden = true;
+    if (btnTambahAkun) btnTambahAkun.hidden = true;
+    const panelSiswa = document.getElementById('panel-data-siswa');
+    const panelAkun = document.getElementById('panel-data-akun');
+    if (panelSiswa) panelSiswa.hidden = false;
+    if (panelAkun) panelAkun.hidden = true;
+    if (descEl) {
+      descEl.textContent = isWali
+        ? `Daftar siswa di kelas perwalian Anda (${profilPengguna?.waliKelas || '-'}).`
+        : 'Daftar siswa di kelas yang Anda ajar.';
+    }
+  } else {
+    if (descEl) {
+      descEl.textContent =
+        'Kelola data siswa, impor daftar siswa dari Excel, serta atur akun guru dan wali kelas.';
+    }
+    aturTabAdmin(adminTabAktif);
+  }
+}
+
 export function aturMenuAktif(menu) {
+  if (isWaliKelas() && (menu === 'absen' || menu === 'nilai')) {
+    menu = 'rekap';
+  }
   menuAktif = menu;
 
   document.querySelectorAll('[data-menu]').forEach((btn) => {
@@ -258,7 +393,7 @@ export function initNavigasi() {
 }
 
 // ==========================================================================
-// Pengelolaan Data Siswa (Firestore + Tampilan Kartu/Tabel)
+// Pengelolaan Data Siswa (Sesuai Peran)
 // ==========================================================================
 
 export function getDaftarSiswa() {
@@ -266,18 +401,25 @@ export function getDaftarSiswa() {
 }
 
 export function getDaftarKelas() {
+  const diizinkan = getKelasYangDiizinkan();
   const setKelas = new Set(daftarSiswa.map((s) => s.kelas).filter(Boolean));
+  if (Array.isArray(diizinkan)) {
+    diizinkan.forEach((k) => {
+      if (k) setKelas.add(k);
+    });
+  }
   return Array.from(setKelas).sort((a, b) => a.localeCompare(b, 'id'));
 }
 
 export function sinkronkanDropdownKelas() {
   const kelasList = getDaftarKelas();
+  const wali = isWaliKelas();
   const selectIds = [
-    { id: 'absen-kelas', defaultLabel: 'Semua Kelas' },
+    { id: 'absen-kelas', defaultLabel: 'Semua Kelas Yang Diajar' },
     { id: 'nilai-kelas', defaultLabel: 'Pilih Kelas' },
-    { id: 'rekap-absen-kelas', defaultLabel: 'Semua Kelas' },
-    { id: 'rekap-nilai-kelas', defaultLabel: 'Semua Kelas' },
-    { id: 'siswa-filter-kelas', defaultLabel: 'Semua Kelas' }
+    { id: 'rekap-absen-kelas', defaultLabel: wali ? 'Kelas Perwalian' : 'Semua Kelas' },
+    { id: 'rekap-nilai-kelas', defaultLabel: wali ? 'Kelas Perwalian' : 'Semua Kelas' },
+    { id: 'siswa-filter-kelas', defaultLabel: wali ? 'Kelas Perwalian' : 'Semua Kelas' }
   ];
 
   selectIds.forEach(({ id, defaultLabel }) => {
@@ -286,6 +428,18 @@ export function sinkronkanDropdownKelas() {
     const prevValue = select.value;
 
     select.innerHTML = '';
+
+    if (wali && profilPengguna?.waliKelas) {
+      const opt = document.createElement('option');
+      opt.value = profilPengguna.waliKelas;
+      opt.textContent = `Kelas ${profilPengguna.waliKelas}`;
+      select.appendChild(opt);
+      select.value = profilPengguna.waliKelas;
+      select.disabled = true;
+      return;
+    }
+
+    select.disabled = false;
     const optDefault = document.createElement('option');
     optDefault.value = '';
     optDefault.textContent = defaultLabel;
@@ -307,12 +461,28 @@ export function sinkronkanDropdownKelas() {
 }
 
 export async function muatDataSiswa() {
-  const { auth, db } = getFirebaseServices();
-  const user = auth.currentUser;
-  if (!user) return [];
+  const { db } = getFirebaseServices();
+  const role = getPeranPengguna();
+  const kelasDiizinkan = getKelasYangDiizinkan();
+
+  // Jika Guru/Wali Kelas belum diberi penugasan kelas, jangan jalankan query "in []"
+  if (Array.isArray(kelasDiizinkan) && kelasDiizinkan.length === 0) {
+    daftarSiswa = [];
+    sinkronkanDropdownKelas();
+    renderHalamanSiswa();
+    return daftarSiswa;
+  }
 
   try {
-    const q = query(collection(db, 'siswa'), where('ownerId', '==', user.uid));
+    let q;
+    if (role === 'admin') {
+      q = collection(db, 'siswa');
+    } else if (role === 'wali_kelas') {
+      q = query(collection(db, 'siswa'), where('kelas', '==', kelasDiizinkan[0]));
+    } else {
+      q = query(collection(db, 'siswa'), where('kelas', 'in', kelasDiizinkan.slice(0, 30)));
+    }
+
     const snap = await getDocs(q);
     const items = [];
     snap.forEach((d) => {
@@ -340,6 +510,11 @@ export async function muatDataSiswa() {
 }
 
 export async function isiDataContohSiswa() {
+  if (!isAdmin()) {
+    tampilkanError('Hanya Admin sekolah yang dapat menambahkan data siswa.');
+    return;
+  }
+
   const { auth, db } = getFirebaseServices();
   const user = auth.currentUser;
   if (!user) return;
@@ -373,6 +548,8 @@ export async function isiDataContohSiswa() {
 }
 
 function bukaFormSiswa(siswaEdit = null) {
+  if (!isAdmin()) return;
+
   const isEdit = Boolean(siswaEdit);
   const form = document.createElement('form');
   form.className = 'email-form';
@@ -503,6 +680,8 @@ function bukaFormSiswa(siswaEdit = null) {
 }
 
 async function hapusSiswa(siswa) {
+  if (!isAdmin()) return;
+
   const yakin = await konfirmasiAksi({
     title: 'Hapus Data Siswa?',
     message: `Apakah Anda yakin ingin menghapus data siswa "${siswa.nama}" (Kelas ${siswa.kelas})?`,
@@ -529,6 +708,25 @@ export function renderHalamanSiswa() {
   const container = document.getElementById('siswa-container');
   if (!container) return;
 
+  const adminMode = isAdmin();
+  const kelasDiizinkan = getKelasYangDiizinkan();
+
+  if (Array.isArray(kelasDiizinkan) && kelasDiizinkan.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <h2 class="empty-title">Penugasan Kelas Belum Diatur</h2>
+        <p class="empty-desc">
+          ${
+            isWaliKelas()
+              ? 'Kelas perwalian Anda belum diatur. Silakan hubungi Admin SMP Muhammadiyah Al Furqan.'
+              : 'Anda belum ditugaskan ke kelas mana pun. Silakan hubungi Admin SMP Muhammadiyah Al Furqan.'
+          }
+        </p>
+      </div>
+    `;
+    return;
+  }
+
   const kataCari = (document.getElementById('siswa-cari')?.value || '').trim().toLowerCase();
   const filterKelas = document.getElementById('siswa-filter-kelas')?.value || '';
 
@@ -542,29 +740,41 @@ export function renderHalamanSiswa() {
   });
 
   if (daftarSiswa.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <h2 class="empty-title">Belum Ada Data Siswa</h2>
-        <p class="empty-desc">
-          Tambahkan siswa terlebih dahulu agar Anda bisa mencatat absen dan mengisi nilai. Anda
-          juga bisa mencoba dengan 10 data contoh.
-        </p>
-        <div class="empty-actions">
-          <button type="button" id="btn-empty-tambah-siswa" class="btn btn-primary">
-            + Tambah Siswa Pertama
-          </button>
-          <button type="button" id="btn-empty-contoh-siswa" class="btn btn-secondary">
-            Isi 10 Siswa Contoh
-          </button>
+    if (adminMode) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <h2 class="empty-title">Belum Ada Data Siswa</h2>
+          <p class="empty-desc">
+            Tambahkan siswa terlebih dahulu agar guru dapat mencatat absen dan mengisi nilai. Anda
+            juga bisa mencoba dengan 10 data contoh.
+          </p>
+          <div class="empty-actions">
+            <button type="button" id="btn-empty-tambah-siswa" class="btn btn-primary">
+              + Tambah Siswa Pertama
+            </button>
+            <button type="button" id="btn-empty-contoh-siswa" class="btn btn-secondary">
+              Isi 10 Siswa Contoh
+            </button>
+          </div>
         </div>
-      </div>
-    `;
-    container
-      .querySelector('#btn-empty-tambah-siswa')
-      ?.addEventListener('click', () => bukaFormSiswa(null));
-    container
-      .querySelector('#btn-empty-contoh-siswa')
-      ?.addEventListener('click', isiDataContohSiswa);
+      `;
+      container
+        .querySelector('#btn-empty-tambah-siswa')
+        ?.addEventListener('click', () => bukaFormSiswa(null));
+      container
+        .querySelector('#btn-empty-contoh-siswa')
+        ?.addEventListener('click', isiDataContohSiswa);
+    } else {
+      container.innerHTML = `
+        <div class="empty-state">
+          <h2 class="empty-title">Belum Ada Siswa di Kelas Anda</h2>
+          <p class="empty-desc">
+            Admin sekolah belum memasukkan data siswa untuk kelas ini. Silakan hubungi Admin jika
+            daftar siswa belum tampil.
+          </p>
+        </div>
+      `;
+    }
     return;
   }
 
@@ -578,7 +788,6 @@ export function renderHalamanSiswa() {
     return;
   }
 
-  // Tampilan Kartu (HP) + Tabel (PC)
   const cardsHtml = filtered
     .map(
       (s) => `
@@ -593,18 +802,18 @@ export function renderHalamanSiswa() {
             </p>
           </div>
         </div>
-        <div class="button-pair">
-          <button type="button" class="btn btn-secondary btn-sm btn-edit-siswa" data-id="${escapeHtml(
-            s.id
-          )}">
-            Ubah
-          </button>
-          <button type="button" class="btn btn-danger-outline btn-sm btn-hapus-siswa" data-id="${escapeHtml(
-            s.id
-          )}">
-            Hapus
-          </button>
-        </div>
+        ${
+          adminMode
+            ? `<div class="button-pair">
+                <button type="button" class="btn btn-secondary btn-sm btn-edit-siswa" data-id="${escapeHtml(
+                  s.id
+                )}">Ubah</button>
+                <button type="button" class="btn btn-danger-outline btn-sm btn-hapus-siswa" data-id="${escapeHtml(
+                  s.id
+                )}">Hapus</button>
+              </div>`
+            : ''
+        }
       </article>
     `
     )
@@ -619,20 +828,20 @@ export function renderHalamanSiswa() {
         <td><strong>${escapeHtml(s.nama)}</strong></td>
         <td>Kelas ${escapeHtml(s.kelas)}</td>
         <td>${s.jenisKelamin === 'P' ? 'Perempuan' : 'Laki-laki'}</td>
-        <td>
-          <div class="table-actions">
-            <button type="button" class="btn btn-secondary btn-sm btn-edit-siswa" data-id="${escapeHtml(
-              s.id
-            )}">
-              Ubah
-            </button>
-            <button type="button" class="btn btn-danger-outline btn-sm btn-hapus-siswa" data-id="${escapeHtml(
-              s.id
-            )}">
-              Hapus
-            </button>
-          </div>
-        </td>
+        ${
+          adminMode
+            ? `<td>
+                <div class="table-actions">
+                  <button type="button" class="btn btn-secondary btn-sm btn-edit-siswa" data-id="${escapeHtml(
+                    s.id
+                  )}">Ubah</button>
+                  <button type="button" class="btn btn-danger-outline btn-sm btn-hapus-siswa" data-id="${escapeHtml(
+                    s.id
+                  )}">Hapus</button>
+                </div>
+              </td>`
+            : ''
+        }
       </tr>
     `
     )
@@ -649,6 +858,434 @@ export function renderHalamanSiswa() {
             <th>Nama Lengkap</th>
             <th>Kelas</th>
             <th>Jenis Kelamin</th>
+            ${adminMode ? '<th class="td-num">Tindakan</th>' : ''}
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+  `;
+
+  if (adminMode) {
+    container.querySelectorAll('.btn-edit-siswa').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = daftarSiswa.find((item) => item.id === btn.dataset.id);
+        if (target) bukaFormSiswa(target);
+      });
+    });
+
+    container.querySelectorAll('.btn-hapus-siswa').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = daftarSiswa.find((item) => item.id === btn.dataset.id);
+        if (target) hapusSiswa(target);
+      });
+    });
+  }
+}
+
+// ==========================================================================
+// Pengelolaan Akun Guru & Wali Kelas (Khusus Admin)
+// ==========================================================================
+
+function formatRingkasanTugas(akun) {
+  if (akun.role === 'admin') return 'Semua kelas & semua data';
+  if (akun.role === 'wali_kelas') {
+    return akun.waliKelas ? `Wali Kelas ${akun.waliKelas}` : 'Kelas perwalian belum diisi';
+  }
+  const kelas = Array.isArray(akun.kelasDiampu) && akun.kelasDiampu.length
+    ? akun.kelasDiampu.join(', ')
+    : 'Belum ada kelas';
+  const mapel = Array.isArray(akun.mapelDiampu) && akun.mapelDiampu.length
+    ? akun.mapelDiampu.join(', ')
+    : 'Belum ada mapel';
+  return `Kelas: ${kelas} · Mapel: ${mapel}`;
+}
+
+function pisahDaftarKoma(str) {
+  return String(str || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function bukaFormAkun(akunEdit = null) {
+  if (!isAdmin()) return;
+  const isEdit = Boolean(akunEdit);
+
+  const semuaKelas = getDaftarKelas();
+  const pilihanKelas = Array.from(
+    new Set([...semuaKelas, ...(akunEdit?.kelasDiampu || []), '7A', '7B', '8A', '8B', '9A', '9B'])
+  ).sort((a, b) => a.localeCompare(b, 'id'));
+
+  const kelasTerpilih = new Set(akunEdit?.kelasDiampu || []);
+  const mapelTerpilih = new Set(akunEdit?.mapelDiampu || []);
+  const mapelTambahan = (akunEdit?.mapelDiampu || []).filter(
+    (m) => !DAFTAR_MAPEL_STANDAR.includes(m)
+  );
+
+  const form = document.createElement('form');
+  form.className = 'email-form';
+  form.style.marginTop = '0';
+
+  const checkboxKelasHtml = pilihanKelas
+    .map(
+      (k) => `
+      <label class="checkbox-option">
+        <input type="checkbox" name="akun-kelas-cb" value="${escapeHtml(k)}" ${
+        kelasTerpilih.has(k) ? 'checked' : ''
+      } />
+        <span>Kelas ${escapeHtml(k)}</span>
+      </label>
+    `
+    )
+    .join('');
+
+  const checkboxMapelHtml = DAFTAR_MAPEL_STANDAR.map(
+    (m) => `
+      <label class="checkbox-option">
+        <input type="checkbox" name="akun-mapel-cb" value="${escapeHtml(m)}" ${
+      mapelTerpilih.has(m) ? 'checked' : ''
+    } />
+        <span>${escapeHtml(m)}</span>
+      </label>
+    `
+  ).join('');
+
+  form.innerHTML = `
+    <div class="form-group">
+      <label for="modal-akun-nama" class="form-label">Nama Lengkap Guru / Staf</label>
+      <input
+        type="text"
+        id="modal-akun-nama"
+        class="form-input"
+        placeholder="Contoh: Ibu Siti Rahmawati, S.Pd"
+        maxlength="100"
+        required
+        value="${escapeHtml(akunEdit?.nama || '')}"
+      />
+    </div>
+    <div class="form-group">
+      <label for="modal-akun-email" class="form-label">Alamat Email</label>
+      <input
+        type="email"
+        id="modal-akun-email"
+        class="form-input"
+        placeholder="contoh: siti@gmail.com"
+        maxlength="150"
+        required
+        ${isEdit ? 'readonly' : ''}
+        value="${escapeHtml(akunEdit?.email || '')}"
+      />
+    </div>
+    ${
+      isEdit
+        ? ''
+        : `<div class="form-group">
+            <label for="modal-akun-password" class="form-label">Kata Sandi Sementara (min. 6 huruf/angka)</label>
+            <input
+              type="text"
+              id="modal-akun-password"
+              class="form-input"
+              placeholder="Contoh: AlFurqan2026"
+              minlength="6"
+              required
+            />
+          </div>`
+    }
+    <div class="form-group">
+      <label for="modal-akun-role" class="form-label">Peran Akun</label>
+      <select id="modal-akun-role" class="form-input">
+        <option value="guru" ${(!akunEdit || akunEdit.role === 'guru') ? 'selected' : ''}>
+          Guru (Input Nilai Mapel &amp; Absen Kelas)
+        </option>
+        <option value="wali_kelas" ${akunEdit?.role === 'wali_kelas' ? 'selected' : ''}>
+          Wali Kelas (Lihat Rekap Kelasnya)
+        </option>
+        <option value="admin" ${akunEdit?.role === 'admin' ? 'selected' : ''}>
+          Admin (Kelola Semua Data &amp; Akun)
+        </option>
+      </select>
+    </div>
+
+    <div id="wrap-akun-guru" class="email-form" style="margin-top:0">
+      <div class="form-group">
+        <span class="form-label">Kelas yang Diajar</span>
+        <div class="checkbox-grid">${checkboxKelasHtml}</div>
+        <input
+          type="text"
+          id="modal-akun-kelas-extra"
+          class="form-input"
+          placeholder="Kelas lain jika belum ada di atas (pisah koma, misal: 7C, 8C)"
+          style="margin-top:8px"
+        />
+      </div>
+      <div class="form-group">
+        <span class="form-label">Mata Pelajaran yang Diampu</span>
+        <div class="checkbox-grid">${checkboxMapelHtml}</div>
+        <input
+          type="text"
+          id="modal-akun-mapel-extra"
+          class="form-input"
+          placeholder="Mapel lain jika perlu (pisah koma)"
+          style="margin-top:8px"
+          value="${escapeHtml(mapelTambahan.join(', '))}"
+        />
+      </div>
+    </div>
+
+    <div id="wrap-akun-wali" class="form-group" hidden>
+      <label for="modal-akun-walikelas" class="form-label">Kelas Perwalian</label>
+      <input
+        type="text"
+        id="modal-akun-walikelas"
+        class="form-input"
+        placeholder="Contoh: 7A"
+        maxlength="20"
+        value="${escapeHtml(akunEdit?.waliKelas || '')}"
+      />
+    </div>
+
+    ${
+      isEdit
+        ? `<div class="form-group">
+            <label for="modal-akun-aktif" class="form-label">Status Akun</label>
+            <select id="modal-akun-aktif" class="form-input">
+              <option value="true" ${akunEdit.aktif !== false ? 'selected' : ''}>Aktif (Bisa Masuk)</option>
+              <option value="false" ${akunEdit.aktif === false ? 'selected' : ''}>Nonaktif (Diblokir)</option>
+            </select>
+          </div>`
+        : ''
+    }
+
+    <div class="modal-footer">
+      <button type="button" id="btn-batal-akun" class="btn btn-secondary">Batal</button>
+      <button type="submit" id="btn-simpan-akun" class="btn btn-primary">
+        ${isEdit ? 'Simpan Perubahan' : 'Buat Akun Guru'}
+      </button>
+    </div>
+  `;
+
+  const roleSelect = form.querySelector('#modal-akun-role');
+  const wrapGuru = form.querySelector('#wrap-akun-guru');
+  const wrapWali = form.querySelector('#wrap-akun-wali');
+
+  function perbaruiBagianPeran() {
+    const r = roleSelect.value;
+    wrapGuru.hidden = r !== 'guru';
+    wrapWali.hidden = r !== 'wali_kelas';
+  }
+  perbaruiBagianPeran();
+  roleSelect.addEventListener('change', perbaruiBagianPeran);
+  form.querySelector('#btn-batal-akun').addEventListener('click', tutupModal);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nama = form.querySelector('#modal-akun-nama').value.trim();
+    const email = form.querySelector('#modal-akun-email').value.trim();
+    const password = form.querySelector('#modal-akun-password')?.value || '';
+    const role = roleSelect.value;
+
+    const checkedKelas = Array.from(form.querySelectorAll('input[name="akun-kelas-cb"]:checked')).map(
+      (cb) => cb.value
+    );
+    const extraKelas = pisahDaftarKoma(form.querySelector('#modal-akun-kelas-extra')?.value).map((k) =>
+      k.toUpperCase()
+    );
+    const kelasDiampu =
+      role === 'guru' ? Array.from(new Set([...checkedKelas, ...extraKelas])).slice(0, 20) : [];
+
+    const checkedMapel = Array.from(form.querySelectorAll('input[name="akun-mapel-cb"]:checked')).map(
+      (cb) => cb.value
+    );
+    const extraMapel = pisahDaftarKoma(form.querySelector('#modal-akun-mapel-extra')?.value);
+    const mapelDiampu =
+      role === 'guru' ? Array.from(new Set([...checkedMapel, ...extraMapel])).slice(0, 20) : [];
+
+    const waliKelas =
+      role === 'wali_kelas'
+        ? (form.querySelector('#modal-akun-walikelas')?.value || '').trim().toUpperCase()
+        : '';
+
+    const aktif = isEdit ? form.querySelector('#modal-akun-aktif').value === 'true' : true;
+
+    if (!nama || !email) {
+      tampilkanError('Nama dan alamat email wajib diisi.');
+      return;
+    }
+    if (role === 'guru' && (kelasDiampu.length === 0 || mapelDiampu.length === 0)) {
+      tampilkanError('Untuk peran Guru, pilih minimal 1 kelas yang diajar dan 1 mata pelajaran.');
+      return;
+    }
+    if (role === 'wali_kelas' && !waliKelas) {
+      tampilkanError('Untuk peran Wali Kelas, isi nama kelas perwalian (misal: 7A).');
+      return;
+    }
+
+    const submitBtn = form.querySelector('#btn-simpan-akun');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Menyimpan...';
+
+    const { db } = getFirebaseServices();
+
+    try {
+      if (isEdit) {
+        await updateDoc(doc(db, 'users', akunEdit.id), {
+          nama,
+          role,
+          kelasDiampu,
+          mapelDiampu,
+          waliKelas,
+          aktif,
+          updatedAt: serverTimestamp()
+        });
+        tampilkanSukses(`Data akun ${nama} berhasil diperbarui.`);
+      } else {
+        const newUid = await buatAkunAuthOlehAdmin(email, password);
+        await setDoc(doc(db, 'users', newUid), {
+          uid: newUid,
+          nama,
+          email,
+          role,
+          kelasDiampu,
+          mapelDiampu,
+          waliKelas,
+          aktif: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        tampilkanSukses(
+          `Akun ${nama} (${email}) berhasil dibuat! Minta guru membuka email untuk verifikasi sebelum masuk.`
+        );
+      }
+      tutupModal();
+      await muatDaftarAkun();
+    } catch (error) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = isEdit ? 'Simpan Perubahan' : 'Buat Akun Guru';
+      if (error?.code?.startsWith('auth/')) {
+        tampilkanError(pesanRamahError(error));
+      } else {
+        try {
+          handleFirestoreError(error, OperationType.WRITE, 'users');
+        } catch (wrapped) {
+          tampilkanError(wrapped.friendlyMessage);
+        }
+      }
+    }
+  });
+
+  bukaModal({
+    title: isEdit ? 'Ubah Peran & Penugasan Akun' : 'Tambah Akun Guru / Wali Kelas',
+    bodyElement: form
+  });
+}
+
+export async function muatDaftarAkun() {
+  if (!isAdmin()) return;
+  const { db } = getFirebaseServices();
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    const list = [];
+    snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+    list.sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+    daftarAkun = list;
+    renderDaftarAkun();
+  } catch (error) {
+    try {
+      handleFirestoreError(error, OperationType.LIST, 'users');
+    } catch (wrapped) {
+      tampilkanError(wrapped.friendlyMessage);
+    }
+  }
+}
+
+function renderDaftarAkun() {
+  const container = document.getElementById('akun-container');
+  if (!container) return;
+
+  if (daftarAkun.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <h2 class="empty-title">Belum Ada Akun Guru Terdaftar</h2>
+        <p class="empty-desc">
+          Klik tombol "+ Tambah Akun Guru" di atas untuk membuatkan akun untuk guru atau wali kelas.
+        </p>
+      </div>
+    `;
+    return;
+  }
+
+  const cardsHtml = daftarAkun
+    .map(
+      (a) => `
+      <article class="student-card">
+        <div>
+          <h3 class="student-name">${escapeHtml(a.nama)}</h3>
+          <p class="student-meta">
+            ${escapeHtml(a.email)} · ${escapeHtml(getPeranLabel(a))} · ${
+        a.aktif === false ? 'Nonaktif' : 'Aktif'
+      }
+          </p>
+          <p class="student-meta">${escapeHtml(formatRingkasanTugas(a))}</p>
+        </div>
+        <div class="button-pair">
+          <button type="button" class="btn btn-secondary btn-sm btn-edit-akun" data-id="${escapeHtml(
+            a.id
+          )}">
+            Ubah Peran
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm btn-reset-sandi-akun" data-email="${escapeHtml(
+            a.email
+          )}">
+            Kirim Reset Sandi
+          </button>
+        </div>
+      </article>
+    `
+    )
+    .join('');
+
+  const rowsHtml = daftarAkun
+    .map(
+      (a, idx) => `
+      <tr>
+        <td class="td-center">${idx + 1}</td>
+        <td><strong>${escapeHtml(a.nama)}</strong><br><span style="color:var(--text-muted);font-size:14px">${escapeHtml(
+        a.email
+      )}</span></td>
+        <td>${escapeHtml(getPeranLabel(a))}</td>
+        <td>${escapeHtml(formatRingkasanTugas(a))}</td>
+        <td>${a.aktif === false ? 'Nonaktif' : 'Aktif'}</td>
+        <td>
+          <div class="table-actions">
+            <button type="button" class="btn btn-secondary btn-sm btn-edit-akun" data-id="${escapeHtml(
+              a.id
+            )}">
+              Ubah Peran
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm btn-reset-sandi-akun" data-email="${escapeHtml(
+              a.email
+            )}">
+              Reset Sandi
+            </button>
+          </div>
+        </td>
+      </tr>
+    `
+    )
+    .join('');
+
+  container.innerHTML = `
+    <div class="card-list">${cardsHtml}</div>
+    <div class="desktop-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="td-center">No</th>
+            <th>Nama &amp; Email</th>
+            <th>Peran</th>
+            <th>Penugasan Kelas &amp; Mapel</th>
+            <th>Status</th>
             <th class="td-num">Tindakan</th>
           </tr>
         </thead>
@@ -657,23 +1294,61 @@ export function renderHalamanSiswa() {
     </div>
   `;
 
-  container.querySelectorAll('.btn-edit-siswa').forEach((btn) => {
+  container.querySelectorAll('.btn-edit-akun').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const target = daftarSiswa.find((item) => item.id === btn.dataset.id);
-      if (target) bukaFormSiswa(target);
+      const target = daftarAkun.find((item) => item.id === btn.dataset.id);
+      if (target) bukaFormAkun(target);
     });
   });
 
-  container.querySelectorAll('.btn-hapus-siswa').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const target = daftarSiswa.find((item) => item.id === btn.dataset.id);
-      if (target) hapusSiswa(target);
+  container.querySelectorAll('.btn-reset-sandi-akun').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const email = btn.dataset.email;
+      if (!email) return;
+      try {
+        const { auth } = getFirebaseServices();
+        await sendPasswordResetEmail(auth, email);
+        tampilkanSukses(`Link atur ulang kata sandi sudah dikirim ke ${email}.`);
+      } catch (error) {
+        tampilkanError(pesanRamahError(error));
+      }
     });
   });
 }
 
+function aturTabAdmin(tab) {
+  adminTabAktif = tab;
+  const tabSiswa = document.getElementById('tab-admin-siswa');
+  const tabAkun = document.getElementById('tab-admin-akun');
+  const panelSiswa = document.getElementById('panel-data-siswa');
+  const panelAkun = document.getElementById('panel-data-akun');
+  const btnTambahSiswa = document.getElementById('btn-tambah-siswa');
+  const btnTambahAkun = document.getElementById('btn-tambah-akun');
+
+  if (tabSiswa) {
+    tabSiswa.classList.toggle('is-active', tab === 'siswa');
+    tabSiswa.setAttribute('aria-selected', String(tab === 'siswa'));
+  }
+  if (tabAkun) {
+    tabAkun.classList.toggle('is-active', tab === 'akun');
+    tabAkun.setAttribute('aria-selected', String(tab === 'akun'));
+  }
+  if (panelSiswa) panelSiswa.hidden = tab !== 'siswa';
+  if (panelAkun) panelAkun.hidden = tab !== 'akun';
+
+  if (btnTambahSiswa) btnTambahSiswa.hidden = !isAdmin() || tab !== 'siswa';
+  if (btnTambahAkun) btnTambahAkun.hidden = !isAdmin() || tab !== 'akun';
+
+  if (tab === 'akun' && isAdmin()) {
+    muatDaftarAkun();
+  }
+}
+
 export function initHalamanSiswa() {
   document.getElementById('btn-tambah-siswa')?.addEventListener('click', () => bukaFormSiswa(null));
+  document.getElementById('btn-tambah-akun')?.addEventListener('click', () => bukaFormAkun(null));
+  document.getElementById('tab-admin-siswa')?.addEventListener('click', () => aturTabAdmin('siswa'));
+  document.getElementById('tab-admin-akun')?.addEventListener('click', () => aturTabAdmin('akun'));
   document.getElementById('siswa-cari')?.addEventListener('input', renderHalamanSiswa);
   document.getElementById('siswa-filter-kelas')?.addEventListener('change', renderHalamanSiswa);
 
@@ -691,6 +1366,11 @@ export function initHalamanSiswa() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+
+    if (!isAdmin()) {
+      tampilkanError('Hanya Admin sekolah yang dapat mengimpor data siswa.');
+      return;
+    }
 
     try {
       tampilkanInfo('Sedang membaca file Excel siswa...');
