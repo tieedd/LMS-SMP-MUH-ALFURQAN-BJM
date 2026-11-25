@@ -1,0 +1,219 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Profil guru atau admin SMP Muhammadiyah Al Furqan",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "nama": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "role": {
+          "type": "string",
+          "enum": ["guru", "admin"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "nama", "role", "createdAt", "updatedAt"]
+    },
+    "Siswa": {
+      "title": "Siswa",
+      "description": "Data pokok siswa per kelas milik guru pengampu",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "nis": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30,
+          "pattern": "^[a-zA-Z0-9._\\-]+$"
+        },
+        "nama": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "kelas": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20
+        },
+        "jenisKelamin": {
+          "type": "string",
+          "enum": ["L", "P"]
+        },
+        "aktif": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "nis", "nama", "kelas", "jenisKelamin", "aktif", "createdAt", "updatedAt"]
+    },
+    "Absensi": {
+      "title": "Absensi",
+      "description": "Catatan kehadiran harian siswa per tanggal",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "siswaId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "namaSiswa": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "kelas": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20
+        },
+        "tanggal": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Hadir", "Sakit", "Izin", "Alpa"]
+        },
+        "keterangan": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "siswaId", "namaSiswa", "kelas", "tanggal", "status", "keterangan", "createdAt", "updatedAt"]
+    },
+    "Nilai": {
+      "title": "Nilai",
+      "description": "Nilai siswa per mata pelajaran dan jenis penilaian",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "siswaId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "namaSiswa": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "kelas": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20
+        },
+        "mapel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "jenis": {
+          "type": "string",
+          "enum": ["Tugas", "UH", "PTS", "PAS", "Praktik"]
+        },
+        "judul": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "tanggal": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "skor": {
+          "type": "number"
+        },
+        "catatan": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "siswaId", "namaSiswa", "kelas", "mapel", "jenis", "judul", "tanggal", "skor", "catatan", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Profil akun guru yang login"
+    },
+    "/siswa/{siswaId}": {
+      "schema": { "$ref": "#/entities/Siswa" },
+      "description": "Daftar data siswa milik guru"
+    },
+    "/absensi/{absensiId}": {
+      "schema": { "$ref": "#/entities/Absensi" },
+      "description": "Rekam absensi harian siswa"
+    },
+    "/nilai/{nilaiId}": {
+      "schema": { "$ref": "#/entities/Nilai" },
+      "description": "Rekam nilai siswa per mata pelajaran dan penilaian"
+    }
+  }
+}

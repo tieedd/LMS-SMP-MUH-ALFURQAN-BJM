@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Rekap Nilai &amp; Absen — SMP Muhammadiyah Al Furqan</title>
+    <meta
+      name="description"
+      content="Aplikasi web statis untuk mencatat absensi harian, menginput nilai siswa, melihat rekap kehadiran dan nilai, serta ekspor dan impor Excel untuk guru SMP Muhammadiyah Al Furqan."
+    />
+    <meta property="og:title" content="Rekap Nilai &amp; Absen — SMP Muhammadiyah Al Furqan" />
+    <meta
+      property="og:description"
+      content="Aplikasi sederhana untuk guru SMP Muhammadiyah Al Furqan mencatat absen harian, nilai siswa, dan rekap Excel."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#0F6B46" />
+
+    <!-- Font Plus Jakarta Sans agar tulisan jelas dan nyaman dibaca -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- CSS utama (tanpa build tool) -->
+    <link rel="stylesheet" href="css/style.css" />
+
+    <!-- SheetJS (XLSX) via CDN untuk ekspor dan impor Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  </head>
+  <body>
+    <!-- Area notifikasi ramah (toast) -->
+    <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Layar Loading Awal -->
+    <section id="loading-screen" class="center-screen">
+      <div class="auth-card auth-card--compact">
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="loading-text">Sedang menyiapkan aplikasi...</p>
+      </div>
+    </section>
+
+    <!-- Layar Panduan jika firebase-config.js belum diisi (saat deploy di GitHub Pages) -->
+    <section id="config-warning-screen" class="center-screen" hidden>
+      <div class="auth-card">
+        <div class="brand-lockup">
+          <div class="brand-crest" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" />
+              <path d="M9 12l2 2 4-4" />
+            </svg>
+          </div>
+          <div>
+            <h1 class="brand-title">SMP Muhammadiyah Al Furqan</h1>
+            <p class="brand-subtitle">Pengaturan Awal Database</p>
+          </div>
+        </div>
+        <div class="info-box info-box--warning">
+          <p><strong>File konfigurasi Firebase belum ditemukan.</strong></p>
+          <p>
+            Agar aplikasi dapat terhubung ke database sekolah, silakan salin file
+            <code>firebase-config.example.js</code> menjadi <code>firebase-config.js</code>, lalu isi
+            dengan kode proyek Firebase Anda.
+          </p>
+        </div>
+        <button type="button" class="btn btn-primary btn-full" id="btn-coba-ulang-config">
+          Muat Ulang Halaman
+        </button>
+      </div>
+    </section>
+
+    <!-- Layar Login Guru -->
+    <section id="login-screen" class="center-screen" hidden>
+      <div class="auth-card">
+        <div class="brand-lockup">
+          <div class="brand-crest" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              <path d="M8 7h8M8 11h6" />
+            </svg>
+          </div>
+          <div>
+            <h1 class="brand-title">SMP Muhammadiyah Al Furqan</h1>
+            <p class="brand-subtitle">Aplikasi Rekap Nilai &amp; Absen Guru</p>
+          </div>
+        </div>
+
+        <p class="login-intro">
+          Silakan masuk terlebih dahulu untuk mencatat kehadiran siswa, mengisi nilai, dan mengunduh
+          laporan Excel.
+        </p>
+
+        <div id="login-error-box" class="alert-banner alert-banner--error" hidden></div>
+        <div id="verify-email-box" class="alert-banner alert-banner--warning" hidden>
+          <p id="verify-email-text">
+            Email Anda belum diverifikasi. Silakan periksa kotak masuk email Anda, lalu klik tombol di
+            bawah setelah verifikasi.
+          </p>
+          <div class="alert-actions">
+            <button type="button" id="btn-kirim-verifikasi" class="btn btn-secondary btn-sm">
+              Kirim Ulang Email Verifikasi
+            </button>
+            <button type="button" id="btn-cek-verifikasi" class="btn btn-primary btn-sm">
+              Saya Sudah Verifikasi
+            </button>
+          </div>
+        </div>
+
+        <button type="button" id="btn-login-google" class="btn btn-primary btn-full btn-lg">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"
+            />
+          </svg>
+          <span>Masuk dengan Akun Google</span>
+        </button>
+
+        <div class="divider-text">
+          <span>atau pakai email dan kata sandi</span>
+        </div>
+
+        <button
+          type="button"
+          id="btn-toggle-email-form"
+          class="btn btn-ghost btn-full"
+          aria-expanded="false"
+          aria-controls="form-login-email"
+        >
+          Tampilkan Form Email &amp; Kata Sandi
+        </button>
+
+        <form id="form-login-email" class="email-form" hidden>
+          <div class="form-group">
+            <label for="input-login-email" class="form-label">Alamat Email</label>
+            <input
+              type="email"
+              id="input-login-email"
+              class="form-input"
+              placeholder="contoh: ibu.siti@gmail.com"
+              autocomplete="email"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label for="input-login-password" class="form-label">Kata Sandi</label>
+            <input
+              type="password"
+              id="input-login-password"
+              class="form-input"
+              placeholder="Minimal 6 karakter"
+              autocomplete="current-password"
+              minlength="6"
+              required
+            />
+          </div>
+          <div class="email-form-actions">
+            <button type="submit" id="btn-submit-email-login" class="btn btn-primary btn-full">
+              Masuk dengan Email
+            </button>
+            <button type="button" id="btn-daftar-email" class="btn btn-secondary btn-full">
+              Buat Akun Baru
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- Kerangka Utama Aplikasi (Setelah Login) -->
+    <div id="app-shell" class="app-shell" hidden>
+      <!-- Menu Samping untuk PC / Layar Besar -->
+      <aside class="sidebar" aria-label="Menu Utama">
+        <div class="sidebar-brand">
+          <div class="brand-crest brand-crest--sm" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              <path d="M8 7h8M8 11h6" />
+            </svg>
+          </div>
+          <div class="sidebar-brand-text">
+            <span class="sidebar-school">SMP Muhammadiyah</span>
+            <span class="sidebar-sub">Al Furqan</span>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav" id="sidebar-nav">
+          <button type="button" class="nav-item is-active" data-menu="absen">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M9 11l3 3L22 4" />
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            </svg>
+            <span>Absen</span>
+          </button>
+          <button type="button" class="nav-item" data-menu="nilai">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+            </svg>
+            <span>Nilai</span>
+          </button>
+          <button type="button" class="nav-item" data-menu="rekap">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </svg>
+            <span>Rekap</span>
+          </button>
+          <button type="button" class="nav-item" data-menu="siswa">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            <span>Data Siswa</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="teacher-info">
+            <p class="teacher-name" id="sidebar-teacher-name">Guru</p>
+            <p class="teacher-email" id="sidebar-teacher-email">-</p>
+          </div>
+          <button type="button" id="btn-logout-desktop" class="btn btn-secondary btn-full">
+            Keluar
+          </button>
+        </div>
+      </aside>
+
+      <!-- Bagian Kanan (Header HP + Konten Utama) -->
+      <div class="main-wrapper">
+        <!-- Header Ringkas Khusus HP -->
+        <header class="mobile-topbar">
+          <div class="mobile-topbar-title">
+            <span class="mobile-school-name">SMP Muhammadiyah Al Furqan</span>
+            <h2 class="mobile-page-name" id="mobile-page-title">Absen Siswa</h2>
+          </div>
+          <button type="button" id="btn-logout-mobile" class="btn btn-secondary btn-sm">
+            Keluar
+          </button>
+        </header>
+
+        <!-- Konten 4 Halaman -->
+        <main class="main-content">
+          <!-- HALAMAN 1: ABSEN -->
+          <section id="halaman-absen" class="page-section" aria-labelledby="judul-absen">
+            <div class="page-header">
+              <div>
+                <h1 id="judul-absen" class="page-title">Absen Harian Siswa</h1>
+                <p class="page-desc">
+                  Pilih tanggal dan kelas, lalu tekan tombol Hadir, Sakit, Izin, atau Alpa untuk
+                  setiap siswa.
+                </p>
+              </div>
+              <button type="button" id="btn-semua-hadir" class="btn btn-secondary">
+                Semua Hadir
+              </button>
+            </div>
+
+            <div class="panel">
+              <div class="filter-grid">
+                <div class="form-group">
+                  <label for="absen-tanggal" class="form-label">Tanggal Absen</label>
+                  <input type="date" id="absen-tanggal" class="form-input" />
+                </div>
+                <div class="form-group">
+                  <label for="absen-kelas" class="form-label">Pilih Kelas</label>
+                  <select id="absen-kelas" class="form-input">
+                    <option value="">Semua Kelas</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="summary-strip" id="absen-summary">
+                <span>Hadir: <strong id="count-hadir" class="num">0</strong></span>
+                <span class="sep" aria-hidden="true">·</span>
+                <span>Sakit: <strong id="count-sakit" class="num">0</strong></span>
+                <span class="sep" aria-hidden="true">·</span>
+                <span>Izin: <strong id="count-izin" class="num">0</strong></span>
+                <span class="sep" aria-hidden="true">·</span>
+                <span>Alpa: <strong id="count-alpa" class="num">0</strong></span>
+              </div>
+            </div>
+
+            <div id="absen-container" class="data-area"></div>
+
+            <div class="sticky-save-bar" id="absen-save-bar" hidden>
+              <button type="button" id="btn-simpan-absen" class="btn btn-primary btn-lg btn-full-mobile">
+                Simpan Absen
+              </button>
+            </div>
+          </section>
+
+          <!-- HALAMAN 2: NILAI -->
+          <section id="halaman-nilai" class="page-section" aria-labelledby="judul-nilai" hidden>
+            <div class="page-header">
+              <div>
+                <h1 id="judul-nilai" class="page-title">Input Nilai Siswa</h1>
+                <p class="page-desc">
+                  Isi keterangan tugas atau ulangan di bawah ini, lalu ketik nilai siswa dari 0
+                  sampai 100.
+                </p>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="filter-grid filter-grid--4">
+                <div class="form-group">
+                  <label for="nilai-kelas" class="form-label">Kelas</label>
+                  <select id="nilai-kelas" class="form-input">
+                    <option value="">Pilih Kelas</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="nilai-mapel" class="form-label">Mata Pelajaran</label>
+                  <select id="nilai-mapel" class="form-input">
+                    <option value="PAI & Budi Pekerti">PAI &amp; Budi Pekerti</option>
+                    <option value="Kemuhammadiyahan">Kemuhammadiyahan</option>
+                    <option value="Bahasa Indonesia">Bahasa Indonesia</option>
+                    <option value="Matematika">Matematika</option>
+                    <option value="Bahasa Inggris">Bahasa Inggris</option>
+                    <option value="IPA">IPA</option>
+                    <option value="IPS">IPS</option>
+                    <option value="PPKn">PPKn</option>
+                    <option value="Informatika">Informatika</option>
+                    <option value="PJOK">PJOK</option>
+                    <option value="Seni Budaya">Seni Budaya</option>
+                    <option value="Bahasa Arab">Bahasa Arab</option>
+                    <option value="__lainnya__">Mata Pelajaran Lainnya...</option>
+                  </select>
+                </div>
+                <div class="form-group" id="group-nilai-mapel-custom" hidden>
+                  <label for="nilai-mapel-custom" class="form-label">Nama Mata Pelajaran</label>
+                  <input
+                    type="text"
+                    id="nilai-mapel-custom"
+                    class="form-input"
+                    placeholder="Contoh: Prakarya"
+                    maxlength="60"
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="nilai-jenis" class="form-label">Jenis Penilaian</label>
+                  <select id="nilai-jenis" class="form-input">
+                    <option value="Tugas">Tugas</option>
+                    <option value="UH">Ulangan Harian (UH)</option>
+                    <option value="PTS">PTS (Tengah Semester)</option>
+                    <option value="PAS">PAS (Akhir Semester)</option>
+                    <option value="Praktik">Praktik</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="nilai-judul" class="form-label">Nama Tugas / Ulangan</label>
+                  <input
+                    type="text"
+                    id="nilai-judul"
+                    class="form-input"
+                    placeholder="Contoh: Tugas 1 Bab Bilangan"
+                    value="Penilaian 1"
+                    maxlength="100"
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="nilai-tanggal" class="form-label">Tanggal Penilaian</label>
+                  <input type="date" id="nilai-tanggal" class="form-input" />
+                </div>
+              </div>
+            </div>
+
+            <div id="nilai-container" class="data-area"></div>
+
+            <div class="sticky-save-bar" id="nilai-save-bar" hidden>
+              <button type="button" id="btn-simpan-nilai" class="btn btn-primary btn-lg btn-full-mobile">
+                Simpan Semua Nilai
+              </button>
+            </div>
+
+            <div class="panel panel-spaced">
+              <div class="panel-header-row">
+                <div>
+                  <h2 class="section-subtitle">Riwayat Penilaian Tersimpan</h2>
+                  <p class="section-hint">
+                    Klik "Buka / Ubah" jika ingin mengedit nilai yang pernah disimpan.
+                  </p>
+                </div>
+                <button type="button" id="btn-muat-riwayat-nilai" class="btn btn-secondary btn-sm">
+                  Segarkan Daftar
+                </button>
+              </div>
+              <div id="riwayat-nilai-container"></div>
+            </div>
+          </section>
+
+          <!-- HALAMAN 3: REKAP -->
+          <section id="halaman-rekap" class="page-section" aria-labelledby="judul-rekap" hidden>
+            <div class="page-header">
+              <div>
+                <h1 id="judul-rekap" class="page-title">Rekap &amp; Download Excel</h1>
+                <p class="page-desc">
+                  Lihat ringkasan kehadiran dan rata-rata nilai siswa, lalu unduh ke file Excel.
+                </p>
+              </div>
+            </div>
+
+            <!-- Tab pilihan Rekap Absen atau Rekap Nilai -->
+            <div class="segmented-tabs" role="tablist" aria-label="Pilih Jenis Rekap">
+              <button
+                type="button"
+                class="segmented-tab is-active"
+                id="tab-rekap-absen"
+                data-rekap-tab="absen"
+                role="tab"
+                aria-selected="true"
+              >
+                Rekap Absen
+              </button>
+              <button
+                type="button"
+                class="segmented-tab"
+                id="tab-rekap-nilai"
+                data-rekap-tab="nilai"
+                role="tab"
+                aria-selected="false"
+              >
+                Rekap Nilai
+              </button>
+            </div>
+
+            <!-- Panel Rekap Absen -->
+            <div id="panel-rekap-absen">
+              <div class="panel">
+                <div class="filter-grid filter-grid--3">
+                  <div class="form-group">
+                    <label for="rekap-absen-kelas" class="form-label">Kelas</label>
+                    <select id="rekap-absen-kelas" class="form-input">
+                      <option value="">Semua Kelas</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="rekap-absen-bulan" class="form-label">Bulan</label>
+                    <input type="month" id="rekap-absen-bulan" class="form-input" />
+                  </div>
+                  <div class="form-group form-group--end">
+                    <button type="button" id="btn-export-rekap-absen" class="btn btn-primary btn-full">
+                      Download Excel Rekap Absen
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div id="rekap-absen-container" class="data-area"></div>
+            </div>
+
+            <!-- Panel Rekap Nilai -->
+            <div id="panel-rekap-nilai" hidden>
+              <div class="panel">
+                <div class="filter-grid filter-grid--3">
+                  <div class="form-group">
+                    <label for="rekap-nilai-kelas" class="form-label">Kelas</label>
+                    <select id="rekap-nilai-kelas" class="form-input">
+                      <option value="">Semua Kelas</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="rekap-nilai-mapel" class="form-label">Mata Pelajaran</label>
+                    <select id="rekap-nilai-mapel" class="form-input">
+                      <option value="">Semua Mata Pelajaran</option>
+                    </select>
+                  </div>
+                  <div class="form-group form-group--end">
+                    <button type="button" id="btn-export-rekap-nilai" class="btn btn-primary btn-full">
+                      Download Excel Rekap Nilai
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div id="rekap-nilai-container" class="data-area"></div>
+            </div>
+          </section>
+
+          <!-- HALAMAN 4: DATA SISWA -->
+          <section id="halaman-siswa" class="page-section" aria-labelledby="judul-siswa" hidden>
+            <div class="page-header">
+              <div>
+                <h1 id="judul-siswa" class="page-title">Data Siswa</h1>
+                <p class="page-desc">
+                  Tambah siswa satu per satu atau masukkan daftar siswa sekaligus dari file Excel.
+                </p>
+              </div>
+              <div class="header-actions">
+                <button type="button" id="btn-tambah-siswa" class="btn btn-primary">
+                  + Tambah Siswa
+                </button>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="filter-grid filter-grid--3">
+                <div class="form-group">
+                  <label for="siswa-cari" class="form-label">Cari Nama atau NIS</label>
+                  <input
+                    type="search"
+                    id="siswa-cari"
+                    class="form-input"
+                    placeholder="Ketik nama siswa..."
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="siswa-filter-kelas" class="form-label">Saring Kelas</label>
+                  <select id="siswa-filter-kelas" class="form-input">
+                    <option value="">Semua Kelas</option>
+                  </select>
+                </div>
+                <div class="form-group form-group--end">
+                  <div class="button-pair">
+                    <label for="input-import-excel" class="btn btn-secondary btn-file">
+                      Impor Excel Siswa
+                      <input
+                        type="file"
+                        id="input-import-excel"
+                        accept=".xlsx,.xls,.csv"
+                        hidden
+                      />
+                    </label>
+                    <button type="button" id="btn-template-excel" class="btn btn-ghost">
+                      Contoh Excel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="siswa-container" class="data-area"></div>
+          </section>
+        </main>
+      </div>
+
+      <!-- Menu Bawah Khusus HP (Hanya 4 Menu) -->
+      <nav class="bottom-nav" id="bottom-nav" aria-label="Menu Bawah HP">
+        <button type="button" class="bottom-nav-item is-active" data-menu="absen">
+          <svg class="bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M9 11l3 3L22 4" />
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+          </svg>
+          <span>Absen</span>
+        </button>
+        <button type="button" class="bottom-nav-item" data-menu="nilai">
+          <svg class="bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+          </svg>
+          <span>Nilai</span>
+        </button>
+        <button type="button" class="bottom-nav-item" data-menu="rekap">
+          <svg class="bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+          </svg>
+          <span>Rekap</span>
+        </button>
+        <button type="button" class="bottom-nav-item" data-menu="siswa">
+          <svg class="bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+          <span>Data Siswa</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Modal Ramah (Tambah/Edit Siswa & Konfirmasi Hapus) -->
+    <div id="modal-overlay" class="modal-overlay" hidden>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-header">
+          <h2 id="modal-title" class="modal-title">Judul Dialog</h2>
+          <button type="button" id="btn-modal-close" class="btn-icon-only" aria-label="Tutup jendela">
+            &times;
+          </button>
+        </div>
+        <div id="modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Skrip Aplikasi (ES Modules tanpa build tool) -->
+    <script type="module" src="js/auth.js"></script>
+  </body>
+</html>

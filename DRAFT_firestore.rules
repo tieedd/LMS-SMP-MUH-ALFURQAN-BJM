@@ -1,0 +1,218 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default-Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helper Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'darry.hafidh20@admin.sd.belajar.id' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function siswaBelongsToOwner(siswaId, ownerId) {
+      return isValidId(siswaId) &&
+        exists(/databases/$(database)/documents/siswa/$(siswaId)) &&
+        get(/databases/$(database)/documents/siswa/$(siswaId)).data.ownerId == ownerId;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUser(data, userId) {
+      return data.keys().hasAll(['uid', 'nama', 'role', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'nama', 'email', 'role', 'createdAt', 'updatedAt']) &&
+        data.uid is string && data.uid == userId &&
+        data.nama is string && data.nama.size() >= 1 && data.nama.size() <= 100 &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+        data.role is string && data.role in ['guru', 'admin'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSiswa(data) {
+      return data.keys().hasAll(['ownerId', 'nis', 'nama', 'kelas', 'jenisKelamin', 'aktif', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['ownerId', 'nis', 'nama', 'kelas', 'jenisKelamin', 'aktif', 'createdAt', 'updatedAt']) &&
+        isValidId(data.ownerId) &&
+        data.nis is string && data.nis.size() >= 1 && data.nis.size() <= 30 && data.nis.matches('^[a-zA-Z0-9._\\-]+$') &&
+        data.nama is string && data.nama.size() >= 1 && data.nama.size() <= 100 &&
+        data.kelas is string && data.kelas.size() >= 1 && data.kelas.size() <= 20 &&
+        data.jenisKelamin is string && data.jenisKelamin in ['L', 'P'] &&
+        data.aktif is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAbsensi(data) {
+      return data.keys().hasAll(['ownerId', 'siswaId', 'namaSiswa', 'kelas', 'tanggal', 'status', 'keterangan', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['ownerId', 'siswaId', 'namaSiswa', 'kelas', 'tanggal', 'status', 'keterangan', 'createdAt', 'updatedAt']) &&
+        isValidId(data.ownerId) &&
+        isValidId(data.siswaId) &&
+        data.namaSiswa is string && data.namaSiswa.size() >= 1 && data.namaSiswa.size() <= 100 &&
+        data.kelas is string && data.kelas.size() >= 1 && data.kelas.size() <= 20 &&
+        data.tanggal is string && data.tanggal.size() == 10 && data.tanggal.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.status is string && data.status in ['Hadir', 'Sakit', 'Izin', 'Alpa'] &&
+        data.keterangan is string && data.keterangan.size() <= 200 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidNilai(data) {
+      return data.keys().hasAll(['ownerId', 'siswaId', 'namaSiswa', 'kelas', 'mapel', 'jenis', 'judul', 'tanggal', 'skor', 'catatan', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['ownerId', 'siswaId', 'namaSiswa', 'kelas', 'mapel', 'jenis', 'judul', 'tanggal', 'skor', 'catatan', 'createdAt', 'updatedAt']) &&
+        isValidId(data.ownerId) &&
+        isValidId(data.siswaId) &&
+        data.namaSiswa is string && data.namaSiswa.size() >= 1 && data.namaSiswa.size() <= 100 &&
+        data.kelas is string && data.kelas.size() >= 1 && data.kelas.size() <= 20 &&
+        data.mapel is string && data.mapel.size() >= 1 && data.mapel.size() <= 60 &&
+        data.jenis is string && data.jenis in ['Tugas', 'UH', 'PTS', 'PAS', 'Praktik'] &&
+        data.judul is string && data.judul.size() >= 1 && data.judul.size() <= 100 &&
+        data.tanggal is string && data.tanggal.size() == 10 && data.tanggal.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        (data.skor is int || data.skor is float) && data.skor >= 0 && data.skor <= 100 &&
+        data.catatan is string && data.catatan.size() <= 200 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+    match /test/connection {
+      allow get: if isSignedIn();
+    }
+
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && (request.auth.uid == adminId || isAdmin());
+      allow list, create, update, delete: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUser(incoming(), userId) &&
+        request.auth.uid == userId &&
+        (incoming().role == 'guru' || isAdmin()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUser(incoming(), userId) &&
+        (
+          isAdmin() ||
+          (
+            request.auth.uid == userId &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['nama', 'email', 'updatedAt']) &&
+            incoming().uid == existing().uid &&
+            incoming().role == existing().role &&
+            incoming().createdAt == existing().createdAt
+          )
+        ) &&
+        incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    match /siswa/{siswaId} {
+      allow get: if isSignedIn() && isValidId(siswaId) && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() &&
+        isValidId(siswaId) &&
+        isValidSiswa(incoming()) &&
+        (incoming().ownerId == request.auth.uid || isAdmin()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(siswaId) &&
+        isValidSiswa(incoming()) &&
+        (
+          isAdmin() ||
+          (
+            existing().ownerId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['nis', 'nama', 'kelas', 'jenisKelamin', 'aktif', 'updatedAt']) &&
+            incoming().ownerId == existing().ownerId &&
+            incoming().createdAt == existing().createdAt
+          )
+        ) &&
+        incoming().updatedAt == request.time;
+      allow delete: if isVerifiedUser() && isValidId(siswaId) && (existing().ownerId == request.auth.uid || isAdmin());
+    }
+
+    match /absensi/{absensiId} {
+      allow get: if isSignedIn() && isValidId(absensiId) && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() &&
+        isValidId(absensiId) &&
+        isValidAbsensi(incoming()) &&
+        (incoming().ownerId == request.auth.uid || isAdmin()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        siswaBelongsToOwner(incoming().siswaId, incoming().ownerId);
+      allow update: if isVerifiedUser() &&
+        isValidId(absensiId) &&
+        isValidAbsensi(incoming()) &&
+        (
+          isAdmin() ||
+          (
+            existing().ownerId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['namaSiswa', 'kelas', 'status', 'keterangan', 'updatedAt']) &&
+            incoming().ownerId == existing().ownerId &&
+            incoming().siswaId == existing().siswaId &&
+            incoming().tanggal == existing().tanggal &&
+            incoming().createdAt == existing().createdAt
+          )
+        ) &&
+        incoming().updatedAt == request.time;
+      allow delete: if isVerifiedUser() && isValidId(absensiId) && (existing().ownerId == request.auth.uid || isAdmin());
+    }
+
+    match /nilai/{nilaiId} {
+      allow get: if isSignedIn() && isValidId(nilaiId) && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() &&
+        isValidId(nilaiId) &&
+        isValidNilai(incoming()) &&
+        (incoming().ownerId == request.auth.uid || isAdmin()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        siswaBelongsToOwner(incoming().siswaId, incoming().ownerId);
+      allow update: if isVerifiedUser() &&
+        isValidId(nilaiId) &&
+        isValidNilai(incoming()) &&
+        (
+          isAdmin() ||
+          (
+            existing().ownerId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['namaSiswa', 'kelas', 'mapel', 'jenis', 'judul', 'tanggal', 'skor', 'catatan', 'updatedAt']) &&
+            incoming().ownerId == existing().ownerId &&
+            incoming().siswaId == existing().siswaId &&
+            incoming().createdAt == existing().createdAt
+          )
+        ) &&
+        incoming().updatedAt == request.time;
+      allow delete: if isVerifiedUser() && isValidId(nilaiId) && (existing().ownerId == request.auth.uid || isAdmin());
+    }
+  }
+}
