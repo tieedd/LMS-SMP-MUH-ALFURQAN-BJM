@@ -1,10 +1,12 @@
 import {
   collection,
+  getDoc,
   getDocs,
   doc,
+  setDoc,
+  updateDoc,
   query,
   where,
-  writeBatch,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import {
@@ -18,32 +20,61 @@ import {
   tanggalHariIni,
   formatTanggalIndonesia,
   getDaftarSiswa,
-  getPeranPengguna,
   getKelasYangDiizinkan,
   isAdmin,
   tampilkanSukses,
   tampilkanError,
   aturMenuAktif,
-  isiDataContohSiswa
+  isiDataContohSiswa,
+  bukaModal,
+  tutupModal,
+  tandaiRekapPerluRefresh
 } from './ui.js';
 
-const STATUS_LIST = ['Hadir', 'Sakit', 'Izin', 'Alpa'];
+const STATUS_OPTIONS = [
+  { code: 'H', label: 'Hadir', desc: 'Siswa masuk kelas' },
+  { code: 'S', label: 'Sakit', desc: 'Ada keterangan sakit' },
+  { code: 'I', label: 'Izin', desc: 'Ada izin orang tua/wali' },
+  { code: 'A', label: 'Alpa', desc: 'Tanpa keterangan' }
+];
+const VALID_CODES = new Set(['H', 'S', 'I', 'A']);
 
-let absenDraft = new Map(); // siswaId -> { status, keterangan, existingDocId }
+let absenDraft = new Map(); // nis -> 'H' | 'S' | 'I' | 'A'
+let absenRecordsAwal = {}; // salinan status absen tersimpan saat halaman dimuat
+let absensiSudahAda = false;
+
+function getKelasTerpilih() {
+  return document.getElementById('absen-kelas')?.value || '';
+}
 
 function getSiswaTersaring() {
-  const kelas = document.getElementById('absen-kelas')?.value || '';
-  const semua = getDaftarSiswa();
-  return kelas ? semua.filter((s) => s.kelas === kelas) : semua;
+  const kelas = getKelasTerpilih();
+  if (!kelas) return [];
+  return getDaftarSiswa().filter((s) => s.kelas === kelas);
+}
+
+function perbaruiBannerSudahAda(kelas, tanggal) {
+  const banner = document.getElementById('absen-existing-banner');
+  if (!banner) return;
+
+  if (!absensiSudahAda || !kelas || !tanggal) {
+    banner.hidden = true;
+    banner.textContent = '';
+    return;
+  }
+
+  banner.textContent = `Absen Kelas ${kelas} tanggal ${formatTanggalIndonesia(
+    tanggal
+  )} sudah tersimpan sebelumnya. Sentuh nama siswa untuk mengubah status jika perlu, lalu tekan Simpan Absen.`;
+  banner.hidden = false;
 }
 
 function perbaruiRingkasan() {
   const siswaList = getSiswaTersaring();
-  const hitung = { Hadir: 0, Sakit: 0, Izin: 0, Alpa: 0 };
+  const hitung = { H: 0, S: 0, I: 0, A: 0 };
 
   siswaList.forEach((s) => {
-    const item = absenDraft.get(s.id);
-    const st = item?.status || 'Hadir';
+    const st = absenDraft.get(s.nis) || 'H';
     if (hitung[st] !== undefined) {
       hitung[st] += 1;
     }
@@ -54,36 +85,65 @@ function perbaruiRingkasan() {
   const elIzin = document.getElementById('count-izin');
   const elAlpa = document.getElementById('count-alpa');
 
-  if (elHadir) elHadir.textContent = String(hitung.Hadir);
-  if (elSakit) elSakit.textContent = String(hitung.Sakit);
-  if (elIzin) elIzin.textContent = String(hitung.Izin);
-  if (elAlpa) elAlpa.textContent = String(hitung.Alpa);
+  if (elHadir) elHadir.textContent = String(hitung.H);
+  if (elSakit) elSakit.textContent = String(hitung.S);
+  if (elIzin) elIzin.textContent = String(hitung.I);
+  if (elAlpa) elAlpa.textContent = String(hitung.A);
 }
 
-function setStatusSiswa(siswaId, status) {
-  const prev = absenDraft.get(siswaId) || { status: 'Hadir', keterangan: '', existingDocId: null };
-  absenDraft.set(siswaId, { ...prev, status });
+function setStatusSiswa(nis, statusCode) {
+  const aman = VALID_CODES.has(statusCode) ? statusCode : 'H';
+  absenDraft.set(nis, aman);
 
-  document.querySelectorAll(`[data-absen-siswa="${CSS.escape(siswaId)}"]`).forEach((wrap) => {
+  document.querySelectorAll(`[data-absen-siswa="${CSS.escape(nis)}"]`).forEach((wrap) => {
     wrap.querySelectorAll('.status-btn').forEach((btn) => {
-      btn.classList.toggle('is-selected', btn.dataset.status === status);
+      btn.classList.toggle('is-selected', btn.dataset.status === aman);
     });
   });
 
   perbaruiRingkasan();
 }
 
-function setKeteranganSiswa(siswaId, keterangan) {
-  const prev = absenDraft.get(siswaId) || { status: 'Hadir', keterangan: '', existingDocId: null };
-  absenDraft.set(siswaId, { ...prev, keterangan });
+function bukaPilihStatusAbsen(siswa) {
+  const statusSaatIni = absenDraft.get(siswa.nis) || 'H';
+  const wrap = document.createElement('div');
 
-  document
-    .querySelectorAll(`input[data-absen-note="${CSS.escape(siswaId)}"]`)
-    .forEach((input) => {
-      if (input.value !== keterangan) {
-        input.value = keterangan;
-      }
+  wrap.innerHTML = `
+    <p style="margin:0 0 6px; color:var(--text-secondary);">
+      NIS ${escapeHtml(siswa.nis)} · Kelas ${escapeHtml(siswa.kelas)}
+    </p>
+    <p style="margin:0 0 12px; font-weight:600;">
+      Pilih status kehadiran untuk <strong>${escapeHtml(siswa.nama)}</strong>:
+    </p>
+    <div class="absen-big-grid">
+      ${STATUS_OPTIONS.map(
+        (opt) => `
+        <button
+          type="button"
+          class="absen-big-btn absen-big-btn--${opt.code} ${
+          statusSaatIni === opt.code ? 'is-selected' : ''
+        }"
+          data-pick-status="${opt.code}"
+        >
+          <span>${opt.label}</span>
+          <span class="absen-big-sub">${opt.desc}</span>
+        </button>
+      `
+      ).join('')}
+    </div>
+  `;
+
+  wrap.querySelectorAll('[data-pick-status]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setStatusSiswa(siswa.nis, btn.dataset.pickStatus);
+      tutupModal();
     });
+  });
+
+  bukaModal({
+    title: `Ubah Status: ${siswa.nama}`,
+    bodyElement: wrap
+  });
 }
 
 function renderDaftarAbsen() {
@@ -148,13 +208,26 @@ function renderDaftarAbsen() {
     return;
   }
 
+  const kelas = getKelasTerpilih();
+  if (!kelas) {
+    if (saveBar) saveBar.hidden = true;
+    container.innerHTML = `
+      <div class="empty-state">
+        <h2 class="empty-title">Langkah 1 · Pilih Kelas</h2>
+        <p class="empty-desc">Silakan pilih kelas terlebih dahulu pada kotak di atas untuk menampilkan daftar siswa.</p>
+      </div>
+    `;
+    perbaruiRingkasan();
+    return;
+  }
+
   const siswaList = getSiswaTersaring();
   if (siswaList.length === 0) {
     if (saveBar) saveBar.hidden = true;
     container.innerHTML = `
       <div class="empty-state">
-        <h2 class="empty-title">Tidak Ada Siswa di Kelas Ini</h2>
-        <p class="empty-desc">Silakan pilih kelas lain pada daftar kelas di atas.</p>
+        <h2 class="empty-title">Tidak Ada Siswa di Kelas ${escapeHtml(kelas)}</h2>
+        <p class="empty-desc">Silakan pilih kelas lain atau tambahkan siswa ke kelas ini.</p>
       </div>
     `;
     perbaruiRingkasan();
@@ -165,36 +238,30 @@ function renderDaftarAbsen() {
 
   const cardsHtml = siswaList
     .map((s) => {
-      const data = absenDraft.get(s.id) || { status: 'Hadir', keterangan: '' };
-      const tombolStatus = STATUS_LIST.map(
-        (st) => `
+      const status = absenDraft.get(s.nis) || 'H';
+      const tombolStatus = STATUS_OPTIONS.map(
+        (opt) => `
           <button
             type="button"
-            class="status-btn ${data.status === st ? 'is-selected' : ''}"
-            data-status="${st}"
+            class="status-btn ${status === opt.code ? 'is-selected' : ''}"
+            data-status="${opt.code}"
           >
-            ${st}
+            ${opt.label}
           </button>
         `
       ).join('');
 
       return `
-        <article class="student-card" data-absen-siswa="${escapeHtml(s.id)}">
+        <article class="student-card" data-absen-siswa="${escapeHtml(s.nis)}">
           <div class="student-card-top">
             <div>
-              <h3 class="student-name">${escapeHtml(s.nama)}</h3>
+              <button type="button" class="student-name-trigger" data-pick-nis="${escapeHtml(s.nis)}">
+                ${escapeHtml(s.nama)}
+              </button>
               <p class="student-meta num">NIS ${escapeHtml(s.nis)} · Kelas ${escapeHtml(s.kelas)}</p>
             </div>
           </div>
           <div class="status-grid">${tombolStatus}</div>
-          <input
-            type="text"
-            class="form-input note-input-sm"
-            data-absen-note="${escapeHtml(s.id)}"
-            placeholder="Catatan (opsional, misal: demam / acara keluarga)"
-            maxlength="200"
-            value="${escapeHtml(data.keterangan)}"
-          />
         </article>
       `;
     })
@@ -202,37 +269,31 @@ function renderDaftarAbsen() {
 
   const rowsHtml = siswaList
     .map((s, idx) => {
-      const data = absenDraft.get(s.id) || { status: 'Hadir', keterangan: '' };
-      const tombolStatus = STATUS_LIST.map(
-        (st) => `
+      const status = absenDraft.get(s.nis) || 'H';
+      const tombolStatus = STATUS_OPTIONS.map(
+        (opt) => `
           <button
             type="button"
-            class="status-btn ${data.status === st ? 'is-selected' : ''}"
-            data-status="${st}"
+            class="status-btn ${status === opt.code ? 'is-selected' : ''}"
+            data-status="${opt.code}"
           >
-            ${st}
+            ${opt.label}
           </button>
         `
       ).join('');
 
       return `
-        <tr data-absen-siswa="${escapeHtml(s.id)}">
+        <tr data-absen-siswa="${escapeHtml(s.nis)}">
           <td class="td-center">${idx + 1}</td>
           <td class="num">${escapeHtml(s.nis)}</td>
-          <td><strong>${escapeHtml(s.nama)}</strong></td>
+          <td>
+            <button type="button" class="student-name-trigger" data-pick-nis="${escapeHtml(s.nis)}">
+              ${escapeHtml(s.nama)}
+            </button>
+          </td>
           <td>Kelas ${escapeHtml(s.kelas)}</td>
           <td>
             <div class="status-grid">${tombolStatus}</div>
-          </td>
-          <td>
-            <input
-              type="text"
-              class="form-input note-input-sm"
-              data-absen-note="${escapeHtml(s.id)}"
-              placeholder="Catatan..."
-              maxlength="200"
-              value="${escapeHtml(data.keterangan)}"
-            />
           </td>
         </tr>
       `;
@@ -240,6 +301,9 @@ function renderDaftarAbsen() {
     .join('');
 
   container.innerHTML = `
+    <p class="step-heading">Langkah 3 · Daftar Siswa Kelas ${escapeHtml(
+      kelas
+    )} (Sentuh nama siswa untuk ubah lewat tombol warna besar)</p>
     <div class="card-list">${cardsHtml}</div>
     <div class="desktop-table-wrap">
       <table class="data-table">
@@ -247,10 +311,9 @@ function renderDaftarAbsen() {
           <tr>
             <th class="td-center">No</th>
             <th>NIS</th>
-            <th>Nama Siswa</th>
+            <th>Nama Siswa (Klik untuk Ubah)</th>
             <th>Kelas</th>
             <th>Status Kehadiran</th>
-            <th>Catatan</th>
           </tr>
         </thead>
         <tbody>${rowsHtml}</tbody>
@@ -259,17 +322,18 @@ function renderDaftarAbsen() {
   `;
 
   container.querySelectorAll('[data-absen-siswa]').forEach((wrap) => {
-    const siswaId = wrap.dataset.absenSiswa;
+    const nis = wrap.dataset.absenSiswa;
     wrap.querySelectorAll('.status-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        setStatusSiswa(siswaId, btn.dataset.status);
+        setStatusSiswa(nis, btn.dataset.status);
       });
     });
   });
 
-  container.querySelectorAll('input[data-absen-note]').forEach((input) => {
-    input.addEventListener('input', () => {
-      setKeteranganSiswa(input.dataset.absenNote, input.value);
+  container.querySelectorAll('[data-pick-nis]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = siswaList.find((s) => s.nis === btn.dataset.pickNis);
+      if (target) bukaPilihStatusAbsen(target);
     });
   });
 
@@ -283,71 +347,181 @@ export async function muatHalamanAbsen() {
     tanggalInput.value = tanggal;
   }
 
-  const siswaList = getDaftarSiswa();
+  const siswaList = getSiswaTersaring();
   absenDraft = new Map();
+  absenRecordsAwal = {};
+  absensiSudahAda = false;
   siswaList.forEach((s) => {
-    absenDraft.set(s.id, { status: 'Hadir', keterangan: '', existingDocId: null });
+    absenDraft.set(s.nis, 'H');
   });
 
-  if (siswaList.length === 0) {
+  const kelas = getKelasTerpilih();
+  if (!kelas || siswaList.length === 0) {
+    perbaruiBannerSudahAda('', '');
     renderDaftarAbsen();
     return;
   }
 
   const { db } = getFirebaseServices();
-  const role = getPeranPengguna();
-  const kelasDiizinkan = getKelasYangDiizinkan();
-
-  if (Array.isArray(kelasDiizinkan) && kelasDiizinkan.length === 0) {
-    renderDaftarAbsen();
-    return;
-  }
+  const absensiId = buatIdAman(`${kelas}_${tanggal}`);
 
   try {
-    let q;
-    if (role === 'admin') {
-      q = query(collection(db, 'absensi'), where('tanggal', '==', tanggal));
-    } else {
-      q = query(
+    const snap = await getDocs(
+      query(
         collection(db, 'absensi'),
-        where('tanggal', '==', tanggal),
-        where('kelas', 'in', kelasDiizinkan.slice(0, 30))
-      );
+        where('kelas', '==', kelas),
+        where('tanggal', '==', tanggal)
+      )
+    );
+    if (!snap.empty) {
+      absensiSudahAda = true;
+      const records = snap.docs[0].data().records || {};
+      absenRecordsAwal = { ...records };
+      siswaList.forEach((s) => {
+        const val = records[s.nis];
+        if (VALID_CODES.has(val)) {
+          absenDraft.set(s.nis, val);
+        }
+      });
     }
-
-    const snap = await getDocs(q);
-    snap.forEach((d) => {
-      const val = d.data();
-      if (val.siswaId) {
-        absenDraft.set(val.siswaId, {
-          status: val.status || 'Hadir',
-          keterangan: val.keterangan || '',
-          existingDocId: d.id
-        });
-      }
-    });
   } catch (error) {
     try {
-      handleFirestoreError(error, OperationType.LIST, 'absensi');
+      handleFirestoreError(error, OperationType.GET, `absensi/${absensiId}`);
     } catch (wrapped) {
       tampilkanError(wrapped.friendlyMessage);
     }
   }
 
+  perbaruiBannerSudahAda(kelas, tanggal);
   renderDaftarAbsen();
+}
+
+async function perbaruiRekapAbsenBulanan(kelas, bulan, prevRecords = {}, newRecords = {}) {
+  const { db } = getFirebaseServices();
+  const siswaKelas = getDaftarSiswa().filter((s) => s.kelas === kelas);
+  const siswaMap = new Map(siswaKelas.map((s) => [s.nis, s]));
+  const rekapId = buatIdAman(`${kelas}_${bulan}`);
+
+  // Hemat pembacaan: cek rekapAbsen bulan tersebut lebih dulu; jika sudah ada cukup perbarui selisihnya
+  const rekapSnap = await getDocs(query(collection(db, 'rekapAbsen'), where('kelas', '==', kelas)));
+  const docBulanIni = rekapSnap.docs.find(
+    (d) => d.id === rekapId || d.data().bulan === bulan
+  );
+
+  if (docBulanIni) {
+    const existingData = docBulanIni.data()?.ringkasan || {};
+    const ringkasan = {};
+
+    Object.entries(existingData).forEach(([nis, item]) => {
+      const H = Number(item?.H || 0);
+      const S = Number(item?.S || 0);
+      const I = Number(item?.I || 0);
+      const A = Number(item?.A || 0);
+      ringkasan[nis] = {
+        nama: siswaMap.get(nis)?.nama || item?.nama || nis,
+        H,
+        S,
+        I,
+        A,
+        total: H + S + I + A
+      };
+    });
+
+    siswaKelas.forEach((s) => {
+      if (!ringkasan[s.nis]) {
+        ringkasan[s.nis] = { nama: s.nama, H: 0, S: 0, I: 0, A: 0, total: 0 };
+      } else {
+        ringkasan[s.nis].nama = s.nama;
+      }
+    });
+
+    const semuaNis = new Set([...Object.keys(prevRecords), ...Object.keys(newRecords)]);
+    semuaNis.forEach((nis) => {
+      const oldSt = VALID_CODES.has(prevRecords[nis]) ? prevRecords[nis] : null;
+      const newSt = VALID_CODES.has(newRecords[nis]) ? newRecords[nis] : null;
+      if (oldSt === newSt) return;
+
+      if (!ringkasan[nis]) {
+        ringkasan[nis] = {
+          nama: siswaMap.get(nis)?.nama || nis,
+          H: 0,
+          S: 0,
+          I: 0,
+          A: 0,
+          total: 0
+        };
+      }
+      if (oldSt && ringkasan[nis][oldSt] > 0) {
+        ringkasan[nis][oldSt] -= 1;
+      }
+      if (newSt) {
+        ringkasan[nis][newSt] += 1;
+      }
+      ringkasan[nis].total =
+        ringkasan[nis].H + ringkasan[nis].S + ringkasan[nis].I + ringkasan[nis].A;
+    });
+
+    await updateDoc(doc(db, 'rekapAbsen', rekapId), {
+      ringkasan,
+      updatedAt: serverTimestamp()
+    });
+    return;
+  }
+
+  // Fallback jika ringkasan bulan ini belum pernah dibuat: hitung dari absensi harian bulan ini
+  const snap = await getDocs(query(collection(db, 'absensi'), where('kelas', '==', kelas)));
+  const ringkasan = {};
+
+  siswaKelas.forEach((s) => {
+    ringkasan[s.nis] = {
+      nama: s.nama,
+      H: 0,
+      S: 0,
+      I: 0,
+      A: 0,
+      total: 0
+    };
+  });
+
+  snap.forEach((d) => {
+    const data = d.data();
+    if (!String(data.tanggal || '').startsWith(bulan)) return;
+    const records = data.records || {};
+    Object.entries(records).forEach(([nis, st]) => {
+      if (!ringkasan[nis]) {
+        ringkasan[nis] = { nama: siswaMap.get(nis)?.nama || nis, H: 0, S: 0, I: 0, A: 0, total: 0 };
+      }
+      if (VALID_CODES.has(st)) {
+        ringkasan[nis][st] += 1;
+        ringkasan[nis].total += 1;
+      }
+    });
+  });
+
+  await setDoc(doc(db, 'rekapAbsen', rekapId), {
+    kelas,
+    bulan,
+    ringkasan,
+    updatedAt: serverTimestamp()
+  });
 }
 
 async function simpanAbsen() {
   const tanggal = document.getElementById('absen-tanggal')?.value;
-  const kelas = document.getElementById('absen-kelas')?.value || '';
+  const kelas = getKelasTerpilih();
+
+  if (!kelas) {
+    tampilkanError('Silakan pilih kelas pada Langkah 1 terlebih dahulu.');
+    return;
+  }
   if (!tanggal || !/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) {
-    tampilkanError('Silakan pilih tanggal absen yang valid terlebih dahulu.');
+    tampilkanError('Silakan pilih tanggal absen yang valid pada Langkah 2.');
     return;
   }
 
   const siswaList = getSiswaTersaring();
   if (siswaList.length === 0) {
-    tampilkanError('Belum ada siswa untuk disimpan absennya.');
+    tampilkanError('Belum ada siswa di kelas ini untuk disimpan absennya.');
     return;
   }
 
@@ -357,63 +531,45 @@ async function simpanAbsen() {
     btn.textContent = 'Menyimpan Absen...';
   }
 
-  const { auth, db } = getFirebaseServices();
-  const user = auth.currentUser;
+  const { db } = getFirebaseServices();
+  const absensiId = buatIdAman(`${kelas}_${tanggal}`);
+  const records = {};
+  siswaList.forEach((s) => {
+    const st = absenDraft.get(s.nis);
+    records[s.nis] = VALID_CODES.has(st) ? st : 'H';
+  });
+
+  const prevRecords = absensiSudahAda ? { ...absenRecordsAwal } : {};
 
   try {
-    const chunkSize = 400;
-    for (let i = 0; i < siswaList.length; i += chunkSize) {
-      const chunk = siswaList.slice(i, i + chunkSize);
-      const batch = writeBatch(db);
-
-      chunk.forEach((siswa) => {
-        const draft = absenDraft.get(siswa.id) || {
-          status: 'Hadir',
-          keterangan: '',
-          existingDocId: null
-        };
-        const keteranganAman = String(draft.keterangan || '').trim().slice(0, 200);
-        const statusAman = STATUS_LIST.includes(draft.status) ? draft.status : 'Hadir';
-
-        if (draft.existingDocId) {
-          const ref = doc(db, 'absensi', draft.existingDocId);
-          batch.update(ref, {
-            namaSiswa: siswa.nama,
-            kelas: siswa.kelas,
-            status: statusAman,
-            keterangan: keteranganAman,
-            updatedAt: serverTimestamp()
-          });
-        } else {
-          // ID unik per tanggal & siswa agar tidak ganda walau diinput ulang
-          const newDocId = buatIdAman(`${tanggal}_${siswa.id}`);
-          const ref = doc(db, 'absensi', newDocId);
-          batch.set(ref, {
-            ownerId: user.uid,
-            siswaId: siswa.id,
-            namaSiswa: siswa.nama,
-            kelas: siswa.kelas,
-            tanggal,
-            status: statusAman,
-            keterangan: keteranganAman,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          });
-          draft.existingDocId = newDocId;
-          absenDraft.set(siswa.id, draft);
-        }
+    const ref = doc(db, 'absensi', absensiId);
+    if (absensiSudahAda) {
+      await updateDoc(ref, {
+        records,
+        updatedAt: serverTimestamp()
       });
-
-      await batch.commit();
+    } else {
+      await setDoc(ref, {
+        tanggal,
+        kelas,
+        records,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      absensiSudahAda = true;
     }
 
-    const labelKelas = kelas ? `Kelas ${kelas}` : 'semua kelas';
+    await perbaruiRekapAbsenBulanan(kelas, tanggal.slice(0, 7), prevRecords, records);
+    absenRecordsAwal = { ...records };
+    tandaiRekapPerluRefresh('absen');
+    perbaruiBannerSudahAda(kelas, tanggal);
+
     tampilkanSukses(
-      `Absen ${labelKelas} tanggal ${formatTanggalIndonesia(tanggal)} berhasil disimpan.`
+      `Absen Kelas ${kelas} tanggal ${formatTanggalIndonesia(tanggal)} berhasil disimpan.`
     );
   } catch (error) {
     try {
-      handleFirestoreError(error, OperationType.WRITE, 'absensi');
+      handleFirestoreError(error, OperationType.WRITE, `absensi/${absensiId}`);
     } catch (wrapped) {
       tampilkanError(wrapped.friendlyMessage);
     }
@@ -432,13 +588,17 @@ export function initHalamanAbsen() {
   }
 
   tanggalInput?.addEventListener('change', muatHalamanAbsen);
-  document.getElementById('absen-kelas')?.addEventListener('change', renderDaftarAbsen);
+  document.getElementById('absen-kelas')?.addEventListener('change', muatHalamanAbsen);
 
   document.getElementById('btn-semua-hadir')?.addEventListener('click', () => {
     const siswaList = getSiswaTersaring();
-    siswaList.forEach((s) => setStatusSiswa(s.id, 'Hadir'));
+    if (siswaList.length === 0) {
+      tampilkanError('Pilih kelas terlebih dahulu untuk menandai siswa Hadir.');
+      return;
+    }
+    siswaList.forEach((s) => setStatusSiswa(s.nis, 'H'));
     tampilkanSukses(
-      'Semua siswa pada daftar ini sudah ditandai Hadir. Jangan lupa tekan Simpan Absen.'
+      'Semua siswa pada kelas ini sudah ditandai Hadir. Jangan lupa tekan Simpan Absen.'
     );
   });
 

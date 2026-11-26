@@ -59,11 +59,10 @@
           </div>
         </div>
         <div class="info-box info-box--warning">
-          <p><strong>File konfigurasi Firebase belum ditemukan.</strong></p>
+          <p><strong>Pengaturan koneksi database belum diisi.</strong></p>
           <p>
-            Agar aplikasi dapat terhubung ke database sekolah, silakan salin file
-            <code>firebase-config.example.js</code> menjadi <code>firebase-config.js</code>, lalu isi
-            dengan kode proyek Firebase Anda.
+            Aplikasi belum tersambung ke penyimpanan data sekolah. Hubungi pengelola aplikasi
+            sekolah untuk melengkapi file <code>firebase-config.js</code> terlebih dahulu.
           </p>
         </div>
         <button type="button" class="btn btn-primary btn-full" id="btn-coba-ulang-config">
@@ -234,6 +233,14 @@
         </nav>
 
         <div class="sidebar-footer">
+          <button type="button" class="nav-item sidebar-guide-btn" data-menu="panduan" id="btn-panduan-desktop">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span>Panduan Guru</span>
+          </button>
           <div class="teacher-info">
             <p class="teacher-name" id="sidebar-teacher-name">Guru</p>
             <p class="teacher-role" id="sidebar-teacher-role">Peran</p>
@@ -253,9 +260,14 @@
             <span class="mobile-school-name" id="mobile-role-label">SMP Muhammadiyah Al Furqan</span>
             <h2 class="mobile-page-name" id="mobile-page-title">Absen Siswa</h2>
           </div>
-          <button type="button" id="btn-logout-mobile" class="btn btn-secondary btn-sm">
-            Keluar
-          </button>
+          <div class="mobile-topbar-actions">
+            <button type="button" id="btn-panduan-mobile" data-menu="panduan" class="btn btn-ghost btn-sm">
+              Panduan
+            </button>
+            <button type="button" id="btn-logout-mobile" class="btn btn-secondary btn-sm">
+              Keluar
+            </button>
+          </div>
         </header>
 
         <!-- Konten 4 Halaman -->
@@ -266,8 +278,8 @@
               <div>
                 <h1 id="judul-absen" class="page-title">Absen Harian Siswa</h1>
                 <p class="page-desc">
-                  Pilih tanggal dan kelas, lalu tekan tombol Hadir, Sakit, Izin, atau Alpa untuk
-                  setiap siswa.
+                  Langkah 1 pilih kelas, langkah 2 pilih tanggal, lalu sentuh nama siswa untuk
+                  mengubah status (semua otomatis Hadir).
                 </p>
               </div>
               <button type="button" id="btn-semua-hadir" class="btn btn-secondary">
@@ -278,14 +290,14 @@
             <div class="panel">
               <div class="filter-grid">
                 <div class="form-group">
-                  <label for="absen-tanggal" class="form-label">Tanggal Absen</label>
-                  <input type="date" id="absen-tanggal" class="form-input" />
+                  <label for="absen-kelas" class="form-label">Langkah 1 · Pilih Kelas</label>
+                  <select id="absen-kelas" class="form-input">
+                    <option value="">Pilih Kelas</option>
+                  </select>
                 </div>
                 <div class="form-group">
-                  <label for="absen-kelas" class="form-label">Pilih Kelas</label>
-                  <select id="absen-kelas" class="form-input">
-                    <option value="">Semua Kelas</option>
-                  </select>
+                  <label for="absen-tanggal" class="form-label">Langkah 2 · Pilih Tanggal</label>
+                  <input type="date" id="absen-tanggal" class="form-input" />
                 </div>
               </div>
 
@@ -299,6 +311,8 @@
                 <span>Alpa: <strong id="count-alpa" class="num">0</strong></span>
               </div>
             </div>
+
+            <div id="absen-existing-banner" class="alert-banner alert-banner--info" hidden></div>
 
             <div id="absen-container" class="data-area"></div>
 
@@ -315,14 +329,28 @@
               <div>
                 <h1 id="judul-nilai" class="page-title">Input Nilai Siswa</h1>
                 <p class="page-desc">
-                  Isi keterangan tugas atau ulangan di bawah ini, lalu ketik nilai siswa dari 0
-                  sampai 100.
+                  Pilih kelas, mata pelajaran, dan semester, lalu isi nilai Tugas, UTS, dan UAS
+                  (0–100) atau impor dari Excel.
                 </p>
+              </div>
+              <div class="button-pair" id="nilai-excel-actions">
+                <button type="button" id="btn-template-nilai-excel" class="btn btn-secondary">
+                  Unduh Template Nilai
+                </button>
+                <label for="input-import-nilai-excel" class="btn btn-primary btn-file">
+                  Impor Nilai dari Excel
+                  <input
+                    type="file"
+                    id="input-import-nilai-excel"
+                    accept=".xlsx,.xls,.csv"
+                    hidden
+                  />
+                </label>
               </div>
             </div>
 
             <div class="panel">
-              <div class="filter-grid filter-grid--4">
+              <div class="filter-grid filter-grid--3">
                 <div class="form-group">
                   <label for="nilai-kelas" class="form-label">Kelas</label>
                   <select id="nilai-kelas" class="form-input">
@@ -332,58 +360,30 @@
                 <div class="form-group">
                   <label for="nilai-mapel" class="form-label">Mata Pelajaran</label>
                   <select id="nilai-mapel" class="form-input">
-                    <option value="PAI & Budi Pekerti">PAI &amp; Budi Pekerti</option>
-                    <option value="Kemuhammadiyahan">Kemuhammadiyahan</option>
-                    <option value="Bahasa Indonesia">Bahasa Indonesia</option>
-                    <option value="Matematika">Matematika</option>
-                    <option value="Bahasa Inggris">Bahasa Inggris</option>
-                    <option value="IPA">IPA</option>
-                    <option value="IPS">IPS</option>
-                    <option value="PPKn">PPKn</option>
-                    <option value="Informatika">Informatika</option>
-                    <option value="PJOK">PJOK</option>
-                    <option value="Seni Budaya">Seni Budaya</option>
-                    <option value="Bahasa Arab">Bahasa Arab</option>
-                    <option value="__lainnya__">Mata Pelajaran Lainnya...</option>
-                  </select>
-                </div>
-                <div class="form-group" id="group-nilai-mapel-custom" hidden>
-                  <label for="nilai-mapel-custom" class="form-label">Nama Mata Pelajaran</label>
-                  <input
-                    type="text"
-                    id="nilai-mapel-custom"
-                    class="form-input"
-                    placeholder="Contoh: Prakarya"
-                    maxlength="60"
-                  />
-                </div>
-                <div class="form-group">
-                  <label for="nilai-jenis" class="form-label">Jenis Penilaian</label>
-                  <select id="nilai-jenis" class="form-input">
-                    <option value="Tugas">Tugas</option>
-                    <option value="UH">Ulangan Harian (UH)</option>
-                    <option value="PTS">PTS (Tengah Semester)</option>
-                    <option value="PAS">PAS (Akhir Semester)</option>
-                    <option value="Praktik">Praktik</option>
+                    <option value="">Pilih Mata Pelajaran</option>
                   </select>
                 </div>
                 <div class="form-group">
-                  <label for="nilai-judul" class="form-label">Nama Tugas / Ulangan</label>
-                  <input
-                    type="text"
-                    id="nilai-judul"
-                    class="form-input"
-                    placeholder="Contoh: Tugas 1 Bab Bilangan"
-                    value="Penilaian 1"
-                    maxlength="100"
-                  />
-                </div>
-                <div class="form-group">
-                  <label for="nilai-tanggal" class="form-label">Tanggal Penilaian</label>
-                  <input type="date" id="nilai-tanggal" class="form-input" />
+                  <label for="nilai-semester" class="form-label">Semester</label>
+                  <select id="nilai-semester" class="form-input">
+                    <option value="Ganjil">Semester Ganjil</option>
+                    <option value="Genap">Semester Genap</option>
+                  </select>
                 </div>
               </div>
+
+              <div class="bobot-strip" id="nilai-bobot-bar">
+                <span id="nilai-bobot-label">
+                  Bobot Nilai Akhir: Tugas 30% · UTS 30% · UAS 40%
+                </span>
+                <button type="button" id="btn-atur-bobot-nilai" class="btn btn-secondary btn-sm" hidden>
+                  Atur Bobot Nilai
+                </button>
+              </div>
             </div>
+
+            <!-- Pratinjau Impor Nilai Excel (Baris Bermasalah Ditandai Merah) -->
+            <div id="nilai-import-preview-panel" class="panel panel-spaced" hidden></div>
 
             <div id="nilai-container" class="data-area"></div>
 
@@ -392,61 +392,53 @@
                 Simpan Semua Nilai
               </button>
             </div>
-
-            <div class="panel panel-spaced">
-              <div class="panel-header-row">
-                <div>
-                  <h2 class="section-subtitle">Riwayat Penilaian Tersimpan</h2>
-                  <p class="section-hint">
-                    Klik "Buka / Ubah" jika ingin mengedit nilai yang pernah disimpan.
-                  </p>
-                </div>
-                <button type="button" id="btn-muat-riwayat-nilai" class="btn btn-secondary btn-sm">
-                  Segarkan Daftar
-                </button>
-              </div>
-              <div id="riwayat-nilai-container"></div>
-            </div>
           </section>
 
           <!-- HALAMAN 3: REKAP -->
           <section id="halaman-rekap" class="page-section" aria-labelledby="judul-rekap" hidden>
-            <div class="page-header">
+            <div class="page-header no-print">
               <div>
-                <h1 id="judul-rekap" class="page-title">Rekap &amp; Download Excel</h1>
+                <h1 id="judul-rekap" class="page-title">Rekap Absen &amp; Rekap Nilai</h1>
                 <p class="page-desc">
-                  Lihat ringkasan kehadiran dan rata-rata nilai siswa, lalu unduh ke file Excel.
+                  Pantau ringkasan kehadiran dan peringkat nilai siswa, atur KKM, lalu unduh Excel
+                  atau cetak laporan.
                 </p>
               </div>
             </div>
 
-            <!-- Tab pilihan Rekap Absen atau Rekap Nilai -->
-            <div class="segmented-tabs" role="tablist" aria-label="Pilih Jenis Rekap">
+            <!-- Dua Tab Besar: Rekap Absen & Rekap Nilai -->
+            <div
+              class="segmented-tabs segmented-tabs--large no-print"
+              role="tablist"
+              aria-label="Pilih Jenis Rekap"
+            >
               <button
                 type="button"
-                class="segmented-tab is-active"
+                class="segmented-tab segmented-tab--large is-active"
                 id="tab-rekap-absen"
                 data-rekap-tab="absen"
                 role="tab"
                 aria-selected="true"
               >
-                Rekap Absen
+                <span class="tab-title">Rekap Absen</span>
+                <span class="tab-sub">H, S, I, A &amp; kehadiran &lt; 80%</span>
               </button>
               <button
                 type="button"
-                class="segmented-tab"
+                class="segmented-tab segmented-tab--large"
                 id="tab-rekap-nilai"
                 data-rekap-tab="nilai"
                 role="tab"
                 aria-selected="false"
               >
-                Rekap Nilai
+                <span class="tab-title">Rekap Nilai</span>
+                <span class="tab-sub">Peringkat, rata-rata &amp; KKM</span>
               </button>
             </div>
 
             <!-- Panel Rekap Absen -->
             <div id="panel-rekap-absen">
-              <div class="panel">
+              <div class="panel no-print">
                 <div class="filter-grid filter-grid--3">
                   <div class="form-group">
                     <label for="rekap-absen-kelas" class="form-label">Kelas</label>
@@ -455,22 +447,50 @@
                     </select>
                   </div>
                   <div class="form-group">
-                    <label for="rekap-absen-bulan" class="form-label">Bulan</label>
+                    <label for="rekap-absen-periode" class="form-label">Periode</label>
+                    <select id="rekap-absen-periode" class="form-input">
+                      <option value="bulan">Per Bulan</option>
+                      <option value="ganjil">Semester Ganjil (Jul–Des)</option>
+                      <option value="genap">Semester Genap (Jan–Jun)</option>
+                    </select>
+                  </div>
+                  <div class="form-group" id="wrap-rekap-absen-bulan">
+                    <label for="rekap-absen-bulan" class="form-label">Pilih Bulan</label>
                     <input type="month" id="rekap-absen-bulan" class="form-input" />
                   </div>
-                  <div class="form-group form-group--end">
-                    <button type="button" id="btn-export-rekap-absen" class="btn btn-primary btn-full">
-                      Download Excel Rekap Absen
+                  <div class="form-group" id="wrap-rekap-absen-tahun" hidden>
+                    <label for="rekap-absen-tahun" class="form-label">Tahun</label>
+                    <select id="rekap-absen-tahun" class="form-input"></select>
+                  </div>
+                </div>
+
+                <div class="rekap-actions-bar">
+                  <span class="rekap-source-note" id="rekap-absen-source-note">
+                    Menggunakan ringkasan bulanan agar lebih cepat dan hemat kuota data.
+                  </span>
+                  <div class="button-pair">
+                    <button type="button" id="btn-refresh-rekap-absen" class="btn btn-ghost btn-sm">
+                      Segarkan
+                    </button>
+                    <button type="button" id="btn-export-rekap-absen" class="btn btn-primary">
+                      Unduh Excel
+                    </button>
+                    <button type="button" id="btn-cetak-rekap-absen" class="btn btn-secondary">
+                      Cetak
                     </button>
                   </div>
                 </div>
               </div>
+
+              <div id="rekap-absen-stats" class="rekap-stats-grid no-print"></div>
+              <div id="rekap-absen-warn-banner" class="alert-banner alert-banner--warning no-print" hidden></div>
+              <div id="rekap-absen-print-header" class="print-only-header"></div>
               <div id="rekap-absen-container" class="data-area"></div>
             </div>
 
             <!-- Panel Rekap Nilai -->
             <div id="panel-rekap-nilai" hidden>
-              <div class="panel">
+              <div class="panel no-print">
                 <div class="filter-grid filter-grid--3">
                   <div class="form-group">
                     <label for="rekap-nilai-kelas" class="form-label">Kelas</label>
@@ -484,24 +504,68 @@
                       <option value="">Semua Mata Pelajaran</option>
                     </select>
                   </div>
-                  <div class="form-group form-group--end">
-                    <button type="button" id="btn-export-rekap-nilai" class="btn btn-primary btn-full">
-                      Download Excel Rekap Nilai
+                  <div class="form-group">
+                    <label for="rekap-nilai-semester" class="form-label">Semester</label>
+                    <select id="rekap-nilai-semester" class="form-input">
+                      <option value="">Semua Semester</option>
+                      <option value="Ganjil">Ganjil</option>
+                      <option value="Genap">Genap</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="rekap-kkm-row">
+                  <div class="rekap-kkm-controls">
+                    <div class="form-group rekap-kkm-input-wrap">
+                      <label for="rekap-nilai-kkm" class="form-label">Atur KKM (0–100)</label>
+                      <div class="kkm-inline-group">
+                        <input
+                          type="number"
+                          id="rekap-nilai-kkm"
+                          class="form-input num"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value="75"
+                        />
+                        <button type="button" id="btn-simpan-kkm" class="btn btn-secondary btn-sm" hidden>
+                          Simpan KKM Sekolah
+                        </button>
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="rekap-nilai-urut" class="form-label">Urutkan Daftar</label>
+                      <select id="rekap-nilai-urut" class="form-input">
+                        <option value="rank">Peringkat (1, 2, 3...)</option>
+                        <option value="nama">Nama Siswa (A–Z)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="button-pair">
+                    <button type="button" id="btn-export-rekap-nilai" class="btn btn-primary">
+                      Unduh Excel
+                    </button>
+                    <button type="button" id="btn-cetak-rekap-nilai" class="btn btn-secondary">
+                      Cetak
                     </button>
                   </div>
                 </div>
               </div>
+
+              <div id="rekap-nilai-stats" class="rekap-stats-grid no-print"></div>
+              <div id="rekap-nilai-kkm-banner" class="alert-banner alert-banner--error no-print" hidden></div>
+              <div id="rekap-nilai-print-header" class="print-only-header"></div>
               <div id="rekap-nilai-container" class="data-area"></div>
             </div>
           </section>
 
-          <!-- HALAMAN 4: DATA SISWA (dan Kelola Akun Guru khusus Admin) -->
+          <!-- HALAMAN 4: DATA SISWA (termasuk Kelas & Mapel serta Akun Guru khusus Admin) -->
           <section id="halaman-siswa" class="page-section" aria-labelledby="judul-siswa" hidden>
             <div class="page-header">
               <div>
                 <h1 id="judul-siswa" class="page-title">Data Siswa</h1>
                 <p class="page-desc" id="siswa-page-desc">
-                  Tambah siswa satu per satu atau masukkan daftar siswa sekaligus dari file Excel.
+                  Tambah siswa satu per satu atau unggah daftar siswa dari file Excel.
                 </p>
               </div>
               <div class="header-actions" id="admin-siswa-actions">
@@ -514,8 +578,8 @@
               </div>
             </div>
 
-            <!-- Tab Khusus Admin: Daftar Siswa vs Akun Guru & Wali Kelas -->
-            <div id="admin-data-tabs" class="segmented-tabs" role="tablist" aria-label="Kelola Data Sekolah" hidden>
+            <!-- Tab Khusus Admin: Daftar Siswa | Kelas & Mapel | Akun Guru & Wali Kelas -->
+            <div id="admin-data-tabs" class="segmented-tabs segmented-tabs--3" role="tablist" aria-label="Kelola Data Sekolah" hidden>
               <button
                 type="button"
                 class="segmented-tab is-active"
@@ -529,13 +593,39 @@
               <button
                 type="button"
                 class="segmented-tab"
+                id="tab-admin-akademik"
+                data-admin-tab="akademik"
+                role="tab"
+                aria-selected="false"
+              >
+                Kelas &amp; Mapel
+              </button>
+              <button
+                type="button"
+                class="segmented-tab"
                 id="tab-admin-akun"
                 data-admin-tab="akun"
                 role="tab"
                 aria-selected="false"
               >
-                Akun Guru &amp; Wali Kelas
+                Akun Guru
               </button>
+            </div>
+
+            <!-- Panel Data Siswa: Tombol Cadangkan Semua Data (Khusus Admin) -->
+            <div id="admin-backup-bar" class="panel backup-panel" hidden>
+              <div class="backup-panel-inner">
+                <div>
+                  <h2 class="section-subtitle">Cadangkan Data Sekolah</h2>
+                  <p class="section-hint">
+                    Simpan salinan semua data siswa, kelas, mapel, absen, nilai, dan akun ke satu
+                    file Excel di komputer atau HP Anda.
+                  </p>
+                </div>
+                <button type="button" id="btn-cadangkan-excel" class="btn btn-secondary">
+                  Cadangkan Semua Data ke Excel
+                </button>
+              </div>
             </div>
 
             <!-- Panel Daftar Siswa -->
@@ -548,7 +638,7 @@
                       type="search"
                       id="siswa-cari"
                       class="form-input"
-                      placeholder="Ketik nama siswa..."
+                      placeholder="Ketik nama atau NIS siswa..."
                     />
                   </div>
                   <div class="form-group">
@@ -559,8 +649,11 @@
                   </div>
                   <div class="form-group form-group--end" id="admin-excel-controls">
                     <div class="button-pair">
-                      <label for="input-import-excel" class="btn btn-secondary btn-file">
-                        Impor Excel Siswa
+                      <button type="button" id="btn-template-excel" class="btn btn-secondary">
+                        Unduh Template Excel
+                      </button>
+                      <label for="input-import-excel" class="btn btn-primary btn-file">
+                        Unggah Data Siswa
                         <input
                           type="file"
                           id="input-import-excel"
@@ -568,20 +661,178 @@
                           hidden
                         />
                       </label>
-                      <button type="button" id="btn-template-excel" class="btn btn-ghost">
-                        Contoh Excel
-                      </button>
                     </div>
                   </div>
                 </div>
               </div>
 
+              <!-- Pratinjau Unggah Excel Siswa (Baris Bermasalah Ditandai Merah) -->
+              <div id="import-preview-panel" class="panel panel-spaced" hidden></div>
+
               <div id="siswa-container" class="data-area"></div>
+            </div>
+
+            <!-- Panel Kelas & Mapel (Khusus Admin) -->
+            <div id="panel-data-akademik" hidden>
+              <div id="akademik-container" class="data-area"></div>
             </div>
 
             <!-- Panel Akun Guru & Wali Kelas (Khusus Admin) -->
             <div id="panel-data-akun" hidden>
               <div id="akun-container" class="data-area"></div>
+            </div>
+          </section>
+
+          <!-- HALAMAN 5: PANDUAN 5 LANGKAH UNTUK GURU -->
+          <section id="halaman-panduan" class="page-section" aria-labelledby="judul-panduan" hidden>
+            <div class="page-header">
+              <div>
+                <h1 id="judul-panduan" class="page-title">Panduan Penggunaan untuk Guru</h1>
+                <p class="page-desc">
+                  Ikuti 5 langkah mudah berikut untuk mencatat kehadiran, mengisi nilai, dan melihat
+                  rekap kelas di SMP Muhammadiyah Al Furqan.
+                </p>
+              </div>
+            </div>
+
+            <div class="guide-steps">
+              <!-- Langkah 1 -->
+              <article class="guide-card">
+                <div class="guide-illustration" aria-hidden="true">
+                  <svg viewBox="0 0 120 90" fill="none">
+                    <rect x="14" y="10" width="92" height="70" rx="10" fill="#ffffff" stroke="#b9c9c0" stroke-width="2" />
+                    <rect x="26" y="24" width="68" height="12" rx="4" fill="#edf2ef" />
+                    <rect x="26" y="42" width="68" height="12" rx="4" fill="#edf2ef" />
+                    <rect x="26" y="60" width="44" height="12" rx="4" fill="#0f6b46" />
+                    <circle cx="90" cy="66" r="10" fill="#e6f4ed" stroke="#0f6b46" stroke-width="2" />
+                    <path d="M86 66l3 3 5-5" stroke="#0f6b46" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </div>
+                <div class="guide-content">
+                  <p class="guide-step-num">Langkah 1</p>
+                  <h2 class="guide-title">Masuk dengan Akun Sekolah</h2>
+                  <p class="guide-text">
+                    Ketik email dan kata sandi Anda di halaman depan, atau pilih tombol Masuk dengan
+                    Akun Google. Jika lupa kata sandi, tekan tulisan <strong>Lupa kata sandi?</strong>
+                    untuk menerima link pembaruan lewat email.
+                  </p>
+                </div>
+              </article>
+
+              <!-- Langkah 2 -->
+              <article class="guide-card">
+                <div class="guide-illustration" aria-hidden="true">
+                  <svg viewBox="0 0 120 90" fill="none">
+                    <rect x="14" y="12" width="92" height="66" rx="10" fill="#ffffff" stroke="#b9c9c0" stroke-width="2" />
+                    <circle cx="34" cy="33" r="8" fill="#e6f4ed" stroke="#0f6b46" stroke-width="2" />
+                    <rect x="48" y="28" width="46" height="5" rx="2.5" fill="#13221a" />
+                    <rect x="48" y="36" width="30" height="4" rx="2" fill="#5d7066" />
+                    <circle cx="34" cy="58" r="8" fill="#e6f4ed" stroke="#0f6b46" stroke-width="2" />
+                    <rect x="48" y="53" width="46" height="5" rx="2.5" fill="#13221a" />
+                    <rect x="48" y="61" width="34" height="4" rx="2" fill="#5d7066" />
+                  </svg>
+                </div>
+                <div class="guide-content">
+                  <p class="guide-step-num">Langkah 2</p>
+                  <h2 class="guide-title">Periksa Daftar Siswa</h2>
+                  <p class="guide-text">
+                    Buka menu <strong>Data Siswa</strong> untuk memastikan daftar nama siswa di kelas
+                    Anda sudah sesuai. Admin sekolah dapat menambah siswa satu per satu atau mengunggah
+                    daftar siswa sekaligus dari Excel.
+                  </p>
+                  <div class="guide-actions">
+                    <button type="button" class="btn btn-secondary btn-sm guide-shortcut-btn" data-guide-menu="siswa">
+                      Buka Data Siswa
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Langkah 3 -->
+              <article class="guide-card">
+                <div class="guide-illustration" aria-hidden="true">
+                  <svg viewBox="0 0 120 90" fill="none">
+                    <rect x="14" y="10" width="92" height="70" rx="10" fill="#ffffff" stroke="#b9c9c0" stroke-width="2" />
+                    <rect x="24" y="22" width="34" height="22" rx="6" fill="#e6f5ed" stroke="#1c8555" stroke-width="1.8" />
+                    <rect x="62" y="22" width="34" height="22" rx="6" fill="#fef6e3" stroke="#d99b1c" stroke-width="1.8" />
+                    <rect x="24" y="49" width="34" height="22" rx="6" fill="#eaf3fb" stroke="#2f7ec1" stroke-width="1.8" />
+                    <rect x="62" y="49" width="34" height="22" rx="6" fill="#fdecec" stroke="#d14343" stroke-width="1.8" />
+                    <path d="M36 33l4 4 7-7" stroke="#0e5936" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </div>
+                <div class="guide-content">
+                  <p class="guide-step-num">Langkah 3</p>
+                  <h2 class="guide-title">Catat Absen Harian</h2>
+                  <p class="guide-text">
+                    Buka menu <strong>Absen</strong>, pilih <strong>Kelas</strong> lalu pilih
+                    <strong>Tanggal</strong>. Semua siswa otomatis berstatus <strong>Hadir</strong>.
+                    Sentuh nama siswa yang tidak masuk untuk memilih <strong>Sakit</strong>,
+                    <strong>Izin</strong>, atau <strong>Alpa</strong>, lalu tekan <strong>Simpan Absen</strong>.
+                  </p>
+                  <div class="guide-actions">
+                    <button type="button" class="btn btn-secondary btn-sm guide-shortcut-btn" data-guide-menu="absen">
+                      Buka Menu Absen
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Langkah 4 -->
+              <article class="guide-card">
+                <div class="guide-illustration" aria-hidden="true">
+                  <svg viewBox="0 0 120 90" fill="none">
+                    <rect x="14" y="12" width="92" height="66" rx="10" fill="#ffffff" stroke="#b9c9c0" stroke-width="2" />
+                    <rect x="24" y="23" width="44" height="6" rx="3" fill="#13221a" />
+                    <rect x="24" y="38" width="22" height="16" rx="4" fill="#edf2ef" stroke="#b9c9c0" />
+                    <rect x="50" y="38" width="22" height="16" rx="4" fill="#edf2ef" stroke="#b9c9c0" />
+                    <rect x="76" y="38" width="22" height="16" rx="4" fill="#e6f4ed" stroke="#0f6b46" stroke-width="1.8" />
+                    <rect x="24" y="61" width="74" height="7" rx="3.5" fill="#0f6b46" />
+                  </svg>
+                </div>
+                <div class="guide-content">
+                  <p class="guide-step-num">Langkah 4</p>
+                  <h2 class="guide-title">Isi atau Impor Nilai Siswa</h2>
+                  <p class="guide-text">
+                    Buka menu <strong>Nilai</strong>, pilih <strong>Kelas</strong>,
+                    <strong>Mata Pelajaran</strong>, dan <strong>Semester</strong>. Ketik nilai Tugas,
+                    UTS, dan UAS (angka 0 sampai 100) atau unggah memakai Template Excel. Nilai akhir
+                    akan terhitung otomatis, lalu tekan <strong>Simpan Semua Nilai</strong>.
+                  </p>
+                  <div class="guide-actions">
+                    <button type="button" class="btn btn-secondary btn-sm guide-shortcut-btn" data-guide-menu="nilai">
+                      Buka Menu Nilai
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Langkah 5 -->
+              <article class="guide-card">
+                <div class="guide-illustration" aria-hidden="true">
+                  <svg viewBox="0 0 120 90" fill="none">
+                    <rect x="14" y="12" width="92" height="66" rx="10" fill="#ffffff" stroke="#b9c9c0" stroke-width="2" />
+                    <rect x="26" y="44" width="14" height="22" rx="3" fill="#b9c9c0" />
+                    <rect x="46" y="34" width="14" height="32" rx="3" fill="#0f6b46" />
+                    <rect x="66" y="24" width="14" height="42" rx="3" fill="#0f6b46" />
+                    <path d="M93 30v26m0 0l-6-6m6 6l6-6" stroke="#1d6fb8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </div>
+                <div class="guide-content">
+                  <p class="guide-step-num">Langkah 5</p>
+                  <h2 class="guide-title">Lihat Rekap, Unduh Excel &amp; Cetak</h2>
+                  <p class="guide-text">
+                    Buka menu <strong>Rekap</strong> untuk melihat laporan kehadiran (siswa hadir di
+                    bawah 80% ditandai kuning) serta peringkat nilai dan siswa di bawah KKM. Tekan
+                    <strong>Unduh Excel</strong> untuk menyimpan file, atau <strong>Cetak</strong>
+                    untuk mencetak laporan.
+                  </p>
+                  <div class="guide-actions">
+                    <button type="button" class="btn btn-primary btn-sm guide-shortcut-btn" data-guide-menu="rekap">
+                      Buka Menu Rekap
+                    </button>
+                  </div>
+                </div>
+              </article>
             </div>
           </section>
         </main>

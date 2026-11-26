@@ -141,10 +141,10 @@ export function pesanRamahError(error) {
   const msg = error?.message || String(error || '');
 
   if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-    return 'Jendela login ditutup sebelum selesai. Silakan klik tombol Masuk lagi ya.';
+    return 'Jendela masuk Google ditutup sebelum selesai. Silakan tekan tombol Masuk lagi.';
   }
   if (code === 'auth/popup-blocked') {
-    return 'Browser menahan jendela login. Mohon izinkan pop-up untuk situs ini, lalu coba lagi.';
+    return 'Browser menahan jendela masuk Google. Izinkan jendela baru muncul lalu coba lagi.';
   }
   if (
     code === 'auth/invalid-credential' ||
@@ -157,7 +157,7 @@ export function pesanRamahError(error) {
     return 'Akun ini sedang dinonaktifkan. Silakan hubungi Admin sekolah.';
   }
   if (code === 'auth/email-already-in-use') {
-    return 'Email ini sudah terdaftar di sistem login Firebase.';
+    return 'Email ini sudah dipakai oleh akun lain. Silakan gunakan email yang berbeda.';
   }
   if (code === 'auth/weak-password') {
     return 'Kata sandi terlalu singkat. Gunakan minimal 6 huruf atau angka.';
@@ -166,7 +166,7 @@ export function pesanRamahError(error) {
     return 'Penulisan alamat email belum tepat. Contoh yang benar: nama@gmail.com.';
   }
   if (code === 'auth/operation-not-allowed') {
-    return 'Login Email/Kata Sandi belum diaktifkan di Firebase Console. Aktifkan di menu Authentication > Sign-in method > Email/Password.';
+    return 'Cara masuk dengan email belum diaktifkan oleh Admin sekolah. Silakan hubungi Admin atau masuk dengan Google.';
   }
   if (code === 'auth/network-request-failed' || msg.includes('offline')) {
     return 'Koneksi internet sedang terputus. Periksa Wi-Fi atau paket data Anda, lalu coba lagi.';
@@ -175,16 +175,16 @@ export function pesanRamahError(error) {
     return 'Terlalu banyak percobaan. Tunggu beberapa menit sebelum mencoba lagi.';
   }
   if (code === 'permission-denied' || msg.includes('Missing or insufficient permissions')) {
-    return 'Maaf, Anda belum memiliki izin untuk membuka atau mengubah data ini sesuai peran akun Anda.';
+    return 'Maaf, akun Anda tidak memiliki izin untuk membuka atau mengubah data ini.';
   }
   if (code === 'unavailable' || code === 'deadline-exceeded') {
-    return 'Server database sedang sibuk atau koneksi lambat. Silakan coba beberapa saat lagi.';
+    return 'Koneksi ke tempat penyimpanan data sedang lambat. Silakan coba sebentar lagi.';
   }
   if (code === 'resource-exhausted' || msg.includes('Quota exceeded')) {
-    return 'Batas pemakaian harian database telah tercapai. Silakan coba lagi besok atau periksa kuota Firebase.';
+    return 'Batas pemakaian harian aplikasi sudah penuh. Data Anda aman, silakan coba lagi besok.';
   }
 
-  return 'Terjadi kendala saat memproses data. Silakan coba lagi beberapa saat lagi.';
+  return 'Maaf, data belum berhasil diproses. Silakan coba beberapa saat lagi.';
 }
 
 export function handleFirestoreError(error, operationType, path) {

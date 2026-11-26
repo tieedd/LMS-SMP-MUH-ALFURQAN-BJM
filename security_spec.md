@@ -1,22 +1,24 @@
 # Security Specification — Rekap Nilai & Absen SMP Muhammadiyah Al Furqan
 
-## 1. Data Invariants (RBAC: `admin`, `guru`, `wali_kelas`)
-1. Every `users/{userId}` document stores `uid`, `nama`, `email`, `role` in `['admin', 'guru', 'wali_kelas']`, `kelasDiampu`, `mapelDiampu`, `waliKelas`, `aktif`, and server timestamps. Only verified `admin` users can create, update, or delete user role profiles. Users may only read their own profile.
-2. Only verified `admin` users can create, update, delete, or bulk-import `siswa` records. `guru` can read/list `siswa` strictly where `kelas in myProfile().kelasDiampu`; `wali_kelas` can read/list `siswa` strictly where `kelas == myProfile().waliKelas`.
-3. `absensi/{absensiId}` can be written by `admin` (all classes) or active `guru` strictly for `kelas in myProfile().kelasDiampu` and referencing a `siswaId` in that same `kelas`. `wali_kelas` has read-only access strictly to `kelas == myProfile().waliKelas`.
-4. `nilai/{nilaiId}` can be written by `admin` (all classes/subjects) or active `guru` strictly for `kelas in myProfile().kelasDiampu` AND `mapel in myProfile().mapelDiampu`, with `skor` strictly numeric (`0..100`) and `jenis` in `['Tugas', 'UH', 'PTS', 'PAS', 'Praktik']`. `wali_kelas` has read-only access strictly to `kelas == myProfile().waliKelas`.
-5. No unauthenticated or unverified-email writes; default-deny catch-all at root.
+## 1. Data Invariants
+1. `users/{userId}`: Only verified `admin` users can create, update, or delete role profiles (`admin`, `guru`, `wali_kelas`); non-admins can only read their own profile.
+2. `kelas/{kelasId}` & `mapel/{mapelId}`: Managed strictly by `admin`. Teachers and homeroom teachers may only read classes/subjects scoped to their role.
+3. `siswa/{nis}`: Document ID equals valid `nis` (`^[a-zA-Z0-9_-]+$`), stores `nama`, `kelas` (must reference an existing `kelas/{kelas}`), and `jk` (`'L' | 'P'`). Managed strictly by `admin`; read-only for assigned `guru` and `wali_kelas`.
+4. `absensi/{kelasId_tanggal}`: Document ID must equal `incoming().kelas + '_' + incoming().tanggal`; stores `tanggal`, `kelas`, and `records` map (`<= 100` entries). Writable by `admin` or active `guru` for `kelas in myProfile().kelasDiampu`; read-only for `wali_kelas`.
+5. `nilai/{nis_mapel_semester}`: Stores `nis` (must match `siswa/{nis}` in `kelas`), `kelas`, `mapel`, `semester` (`Ganjil` | `Genap`), numeric `tugas`, `uts`, `uas`, `akhir` (`0..100` or null for component scores). Writable by `admin` or active `guru` for matching `kelasDiampu` and `mapelDiampu`.
+6. `rekapAbsen/{kelasId_bulan}`: Document ID must equal `incoming().kelas + '_' + incoming().bulan`; stores monthly `ringkasan` H/S/I/A summary writable by `admin` or `guru` for `kelasDiampu`, readable by `wali_kelas` for `waliKelas`.
+7. `pengaturan/{bobotNilai|kkm}`: Readable by active verified staff; writable strictly by `admin` with bounded numeric values (`bobotNilai` sums to 100, `kkm` between 0 and 100).
 
 ## 2. Adversarial Test Payloads ("Dirty Dozen")
-1. Unauthenticated read/list of `/siswa` or `/users`.
-2. Unverified email user attempting to create `/absensi` or `/nilai`.
-3. Self-escalation: teacher or wali_kelas creating/updating `/users/{uid}` with `role: 'admin'`.
-4. Inactive user (`aktif: false`) attempting to read or write `/absensi` or `/nilai`.
-5. Shadow field injection: adding `extraAdminFlag: true` on `/siswa`, `/absensi`, `/nilai`, or `/users`.
-6. ID poisoning: creating `/siswa/invalid..id/..` or >128 char document ID.
-7. Cross-class teacher attendance write: `guru` assigned to `['7A']` attempting to write `/absensi` for `'8B'`.
-8. Cross-subject teacher grade write: `guru` assigned to `['Matematika']` attempting to write `/nilai` for `'IPA'`.
-9. Wali kelas write attempt: `wali_kelas` attempting to create/update/delete `/siswa`, `/absensi`, or `/nilai`.
-10. Grade out of range: setting `skor: 150` or `skor: -5` or string `'100'` on `/nilai`.
-11. Timestamp forgery: setting `createdAt` or `updatedAt` to a past/future client timestamp instead of `request.time`.
-12. Cross-class `list` query scraping: `wali_kelas` or `guru` querying `/siswa`, `/absensi`, or `/nilai` without matching `kelas` / `mapel` constraints.
+1. Unauthenticated read/list on `/siswa`, `/kelas`, `/absensi`, `/nilai`, or `/rekapAbsen`.
+2. Unverified email account attempting writes to any collection.
+3. Role self-escalation on `/users/{uid}` (`role: 'admin'`).
+4. Creating `siswa/{nis}` referencing a non-existent `kelas` document.
+5. Creating `siswa/{nis}` with invalid `jk` (e.g., `'X'`) or invalid ID characters (`..` or spaces).
+6. Guru writing `absensi/{kelasId_tanggal}` for a class outside `kelasDiampu`.
+7. Mismatched `absensi` document ID (e.g., `absensi/7B_2026-11-24` with `kelas: '7A'`).
+8. Guru writing `nilai` for a subject outside `mapelDiampu` or student not in `kelas`.
+9. Out-of-range grade (`tugas: 120` or `akhir: -1` or string `'90'`).
+10. Wali kelas attempting to write or delete `/siswa`, `/absensi`, `/nilai`, or `/rekapAbsen`.
+11. Timestamp forgery (`createdAt` / `updatedAt` != `request.time`) or immutable key tampering on update.
+12. Shadow fields injected into any document (`extraFlag: true`).

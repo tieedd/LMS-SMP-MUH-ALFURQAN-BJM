@@ -353,7 +353,7 @@ async function mulaiAplikasi() {
     if (!profile) {
       setProfilPengguna(null);
       if (noProfileText) {
-        noProfileText.textContent = `Akun ${user.email} belum terdaftar di data guru/wali kelas. Hubungi Admin SMP Muhammadiyah Al Furqan untuk mengaktifkan akses Anda (UID: ${user.uid}).`;
+        noProfileText.textContent = `Akun ${user.email} belum didaftarkan oleh Admin SMP Muhammadiyah Al Furqan. Hubungi Admin sekolah untuk mengaktifkan akun Anda (kode akun: ${user.uid}).`;
       }
       if (noProfileBox) noProfileBox.hidden = false;
       tampilkanLayar('login-screen');

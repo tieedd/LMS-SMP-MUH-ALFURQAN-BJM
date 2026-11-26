@@ -18,11 +18,11 @@ const firebaseConfig = {
   projectId: "gen-lang-client-0137016399",
   storageBucket: "gen-lang-client-0137016399.firebasestorage.app",
   messagingSenderId: "540555040542",
-  appId: "1:540555040542:web:43bd47113190dcf3b61b0f"
+  appId: "1:540555040542:web:43bd47113190dcf3b61b0f",
 
   // Opsional: Biarkan kosong ("") jika memakai database Firestore standar "(default)".
   // Isi hanya jika Anda membuat database Firestore dengan nama khusus.
-  firestoreDatabaseId: ""
+  firestoreDatabaseId: "ai-studio-4f526c77-d9e6-40e6-a915-3d5e4fc267d1"
 };
 
 export default firebaseConfig;

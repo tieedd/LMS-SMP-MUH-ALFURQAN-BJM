@@ -1,102 +1,318 @@
 import {
   collection,
+  getDoc,
   getDocs,
   doc,
+  setDoc,
   query,
   where,
   writeBatch,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
-import { getFirebaseServices, OperationType, handleFirestoreError } from './firebase.js';
+import {
+  getFirebaseServices,
+  OperationType,
+  handleFirestoreError,
+  buatIdAman
+} from './firebase.js';
 import {
   DAFTAR_MAPEL_STANDAR,
   escapeHtml,
-  tanggalHariIni,
-  formatTanggalIndonesia,
   getDaftarSiswa,
+  getDaftarMapelMaster,
   getKelasYangDiizinkan,
   getMapelYangDiizinkan,
   isAdmin,
   tampilkanSukses,
   tampilkanError,
-  konfirmasiAksi,
+  tampilkanInfo,
   aturMenuAktif,
-  isiDataContohSiswa
+  isiDataContohSiswa,
+  bukaModal,
+  tutupModal,
+  tandaiRekapPerluRefresh
 } from './ui.js';
+import { downloadTemplateNilaiExcel, parseNilaiExcelFile } from './excel.js';
 
+let bobotNilai = { tugas: 30, uts: 30, uas: 40 };
+let bobotSudahDimuat = false;
+const cacheNilaiPerScope = new Map();
 let semuaNilaiCache = [];
-let nilaiDraft = new Map(); // siswaId -> { skor, catatan, docId }
+let nilaiDraft = new Map(); // nis -> { tugas, uts, uas, akhir, exists }
+let previewNilaiState = null;
+
+function getNilaiScopeKey(kelas, mapel) {
+  return isAdmin() ? `admin:${kelas}` : `guru:${kelas}:${mapel}`;
+}
+
+function perbaruiCacheNilaiSetelahSimpan(kelas, mapel, semester, daftarTersimpan) {
+  const scopeKey = getNilaiScopeKey(kelas, mapel);
+  const baseList = [...(cacheNilaiPerScope.get(scopeKey) || semuaNilaiCache)];
+  const mapById = new Map(baseList.map((n) => [n.id, n]));
+
+  daftarTersimpan.forEach((item) => {
+    const nilaiId = buatIdAman(`${item.nis}_${mapel}_${semester}`);
+    mapById.set(nilaiId, {
+      id: nilaiId,
+      nis: item.nis,
+      kelas,
+      mapel,
+      semester,
+      tugas: item.tugas,
+      uts: item.uts,
+      uas: item.uas,
+      akhir: item.akhir
+    });
+  });
+
+  const updated = Array.from(mapById.values());
+  cacheNilaiPerScope.set(scopeKey, updated);
+  semuaNilaiCache = updated;
+  tandaiRekapPerluRefresh('nilai');
+}
+
+function perbaruiTampilanBobot() {
+  const labelEl = document.getElementById('nilai-bobot-label');
+  const btnAtur = document.getElementById('btn-atur-bobot-nilai');
+  if (labelEl) {
+    labelEl.textContent = `Bobot Nilai Akhir: Tugas ${bobotNilai.tugas}% · UTS ${bobotNilai.uts}% · UAS ${bobotNilai.uas}%`;
+  }
+  if (btnAtur) {
+    btnAtur.hidden = !isAdmin();
+  }
+}
+
+async function muatBobotNilai() {
+  if (bobotSudahDimuat) {
+    perbaruiTampilanBobot();
+    return;
+  }
+  const { db } = getFirebaseServices();
+  try {
+    const snap = await getDoc(doc(db, 'pengaturan', 'bobotNilai'));
+    if (snap.exists()) {
+      const d = snap.data();
+      const t = Number(d.tugas ?? 30);
+      const u = Number(d.uts ?? 30);
+      const a = Number(d.uas ?? 40);
+      if (t + u + a === 100) {
+        bobotNilai = { tugas: t, uts: u, uas: a };
+      }
+    }
+    bobotSudahDimuat = true;
+  } catch {
+    // Gunakan default 30/30/40 jika pengaturan belum ada
+  }
+  perbaruiTampilanBobot();
+}
+
+function bukaModalBobotNilai() {
+  if (!isAdmin()) return;
+
+  const form = document.createElement('form');
+  form.className = 'email-form';
+  form.style.marginTop = '0';
+
+  form.innerHTML = `
+    <p style="margin:0; color:var(--text-secondary);">
+      Atur persentase bobot untuk menghitung Nilai Akhir otomatis. Jumlah ketiga bobot harus tepat
+      <strong>100%</strong>.
+    </p>
+    <div class="filter-grid filter-grid--3">
+      <div class="form-group">
+        <label for="modal-bobot-tugas" class="form-label">Tugas (%)</label>
+        <input
+          type="number"
+          id="modal-bobot-tugas"
+          class="form-input"
+          min="0"
+          max="100"
+          step="1"
+          required
+          value="${bobotNilai.tugas}"
+        />
+      </div>
+      <div class="form-group">
+        <label for="modal-bobot-uts" class="form-label">UTS (%)</label>
+        <input
+          type="number"
+          id="modal-bobot-uts"
+          class="form-input"
+          min="0"
+          max="100"
+          step="1"
+          required
+          value="${bobotNilai.uts}"
+        />
+      </div>
+      <div class="form-group">
+        <label for="modal-bobot-uas" class="form-label">UAS (%)</label>
+        <input
+          type="number"
+          id="modal-bobot-uas"
+          class="form-input"
+          min="0"
+          max="100"
+          step="1"
+          required
+          value="${bobotNilai.uas}"
+        />
+      </div>
+    </div>
+    <p id="modal-bobot-total" style="margin:4px 0 0; font-weight:700;">
+      Total Bobot: 100%
+    </p>
+    <div class="modal-footer">
+      <button type="button" id="btn-batal-bobot" class="btn btn-secondary">Batal</button>
+      <button type="submit" id="btn-simpan-bobot" class="btn btn-primary">Simpan Bobot</button>
+    </div>
+  `;
+
+  const inputT = form.querySelector('#modal-bobot-tugas');
+  const inputU = form.querySelector('#modal-bobot-uts');
+  const inputA = form.querySelector('#modal-bobot-uas');
+  const totalEl = form.querySelector('#modal-bobot-total');
+
+  function perbaruiTotal() {
+    const sum = Number(inputT.value || 0) + Number(inputU.value || 0) + Number(inputA.value || 0);
+    totalEl.textContent = `Total Bobot: ${sum}%`;
+    totalEl.style.color = sum === 100 ? '#15803d' : '#b91c1c';
+  }
+
+  [inputT, inputU, inputA].forEach((inp) => inp.addEventListener('input', perbaruiTotal));
+  perbaruiTotal();
+
+  form.querySelector('#btn-batal-bobot').addEventListener('click', tutupModal);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const tugas = Number(inputT.value);
+    const uts = Number(inputU.value);
+    const uas = Number(inputA.value);
+
+    if (
+      Number.isNaN(tugas) ||
+      Number.isNaN(uts) ||
+      Number.isNaN(uas) ||
+      tugas < 0 ||
+      uts < 0 ||
+      uas < 0 ||
+      tugas + uts + uas !== 100
+    ) {
+      tampilkanError('Jumlah bobot Tugas + UTS + UAS harus tepat 100%.');
+      return;
+    }
+
+    const submitBtn = form.querySelector('#btn-simpan-bobot');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Menyimpan...';
+
+    const { db } = getFirebaseServices();
+    try {
+      await setDoc(doc(db, 'pengaturan', 'bobotNilai'), {
+        tugas,
+        uts,
+        uas,
+        updatedAt: serverTimestamp()
+      });
+      bobotNilai = { tugas, uts, uas };
+      perbaruiTampilanBobot();
+      isiDraftDariFilterSaatIni();
+      tutupModal();
+      tampilkanSukses(`Bobot nilai berhasil diatur: Tugas ${tugas}%, UTS ${uts}%, UAS ${uas}%.`);
+    } catch (error) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Simpan Bobot';
+      try {
+        handleFirestoreError(error, OperationType.WRITE, 'pengaturan/bobotNilai');
+      } catch (wrapped) {
+        tampilkanError(wrapped.friendlyMessage);
+      }
+    }
+  });
+
+  bukaModal({
+    title: 'Atur Bobot Nilai Akhir',
+    bodyElement: form
+  });
+}
 
 function sinkronkanDropdownMapelInput() {
   const select = document.getElementById('nilai-mapel');
-  const groupCustom = document.getElementById('group-nilai-mapel-custom');
   if (!select) return;
 
   const prev = select.value;
   const mapelDiizinkan = getMapelYangDiizinkan();
+  const masterMapel = getDaftarMapelMaster().map((m) => m.nama).filter(Boolean);
+
   select.innerHTML = '';
 
+  let opsi = [];
   if (Array.isArray(mapelDiizinkan)) {
-    if (mapelDiizinkan.length === 0) {
-      const opt = document.createElement('option');
-      opt.value = '';
-      opt.textContent = 'Belum ada mapel yang diampu';
-      select.appendChild(opt);
-    } else {
-      mapelDiizinkan.forEach((m) => {
-        const opt = document.createElement('option');
-        opt.value = m;
-        opt.textContent = m;
-        select.appendChild(opt);
-      });
-    }
-    if (groupCustom) groupCustom.hidden = true;
-    if (prev && mapelDiizinkan.includes(prev)) {
-      select.value = prev;
-    }
+    opsi = mapelDiizinkan;
+  } else {
+    opsi = masterMapel.length > 0 ? masterMapel : DAFTAR_MAPEL_STANDAR;
+  }
+
+  if (opsi.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'Belum ada mapel tersedia';
+    select.appendChild(opt);
     return;
   }
 
-  // Untuk Admin: tampilkan semua mapel standar + opsi lainnya
-  DAFTAR_MAPEL_STANDAR.forEach((m) => {
+  opsi.forEach((m) => {
     const opt = document.createElement('option');
     opt.value = m;
     opt.textContent = m;
     select.appendChild(opt);
   });
 
-  const optCustom = document.createElement('option');
-  optCustom.value = '__lainnya__';
-  optCustom.textContent = 'Mata Pelajaran Lainnya...';
-  select.appendChild(optCustom);
-
-  if (prev && (DAFTAR_MAPEL_STANDAR.includes(prev) || prev === '__lainnya__')) {
+  if (prev && opsi.includes(prev)) {
     select.value = prev;
+  } else if (opsi.length > 0) {
+    select.value = opsi[0];
   }
-  if (groupCustom) {
-    groupCustom.hidden = select.value !== '__lainnya__';
-  }
-}
-
-function getMapelAktif() {
-  const select = document.getElementById('nilai-mapel');
-  const custom = document.getElementById('nilai-mapel-custom');
-  if (!select) return '';
-  if (select.value === '__lainnya__') {
-    return (custom?.value || '').trim();
-  }
-  return select.value;
 }
 
 function getSiswaKelasNilai() {
   const kelas = document.getElementById('nilai-kelas')?.value || '';
-  const semua = getDaftarSiswa();
-  return kelas ? semua.filter((s) => s.kelas === kelas) : [];
+  if (!kelas) return [];
+  return getDaftarSiswa().filter((s) => s.kelas === kelas);
 }
 
-function hitungPredikatSingkat(skorStr) {
-  if (skorStr === '' || skorStr === null || skorStr === undefined) return '-';
-  const angka = Number(skorStr);
+function isSkorValidString(raw) {
+  const teks = String(raw ?? '').trim();
+  if (teks === '') return true;
+  const n = Number(teks);
+  return !Number.isNaN(n) && n >= 0 && n <= 100;
+}
+
+function hitungAkhir(tugasStr, utsStr, uasStr) {
+  const pasangan = [
+    { raw: tugasStr, w: bobotNilai.tugas },
+    { raw: utsStr, w: bobotNilai.uts },
+    { raw: uasStr, w: bobotNilai.uas }
+  ]
+    .map((p) => ({ teks: String(p.raw ?? '').trim(), w: p.w }))
+    .filter((p) => p.teks !== '')
+    .map((p) => ({ num: Number(p.teks), w: p.w }))
+    .filter((p) => !Number.isNaN(p.num) && p.num >= 0 && p.num <= 100);
+
+  if (pasangan.length === 0) return '';
+  const totalBobot = pasangan.reduce((acc, p) => acc + p.w, 0);
+  if (totalBobot <= 0) {
+    const sum = pasangan.reduce((acc, p) => acc + p.num, 0);
+    return Math.round((sum / pasangan.length) * 10) / 10;
+  }
+  const weighted = pasangan.reduce((acc, p) => acc + p.num * p.w, 0);
+  return Math.round((weighted / totalBobot) * 10) / 10;
+}
+
+function hitungPredikatSingkat(akhirVal) {
+  if (akhirVal === '' || akhirVal === null || akhirVal === undefined) return '-';
+  const angka = Number(akhirVal);
   if (Number.isNaN(angka)) return '-';
   if (angka >= 90) return 'A (Sangat Baik)';
   if (angka >= 80) return 'B (Baik)';
@@ -104,33 +320,49 @@ function hitungPredikatSingkat(skorStr) {
   return 'D (Perlu Bimbingan)';
 }
 
-function sinkronInputNilai(siswaId, field, value) {
-  const prev = nilaiDraft.get(siswaId) || { skor: '', catatan: '', docId: null };
-  nilaiDraft.set(siswaId, { ...prev, [field]: value });
+function sinkronInputNilai(nis, field, value) {
+  const prev = nilaiDraft.get(nis) || { tugas: '', uts: '', uas: '', akhir: '', exists: false };
+  const next = { ...prev, [field]: value };
+  next.akhir = hitungAkhir(next.tugas, next.uts, next.uas);
+  nilaiDraft.set(nis, next);
 
-  if (field === 'skor') {
-    document
-      .querySelectorAll(`input[data-nilai-skor="${CSS.escape(siswaId)}"]`)
-      .forEach((input) => {
-        if (input.value !== value) input.value = value;
-      });
-    document
-      .querySelectorAll(`[data-nilai-predikat="${CSS.escape(siswaId)}"]`)
-      .forEach((el) => {
-        el.textContent = hitungPredikatSingkat(value);
-      });
-  } else {
-    document
-      .querySelectorAll(`input[data-nilai-catatan="${CSS.escape(siswaId)}"]`)
-      .forEach((input) => {
-        if (input.value !== value) input.value = value;
-      });
-  }
+  const valid = isSkorValidString(value);
+
+  document
+    .querySelectorAll(`input[data-nilai-field="${field}"][data-nilai-nis="${CSS.escape(nis)}"]`)
+    .forEach((input) => {
+      if (input.value !== value) input.value = value;
+      input.classList.toggle('input-invalid', !valid);
+    });
+
+  document
+    .querySelectorAll(`[data-nilai-error="${CSS.escape(nis)}"]`)
+    .forEach((el) => {
+      const errList = [];
+      if (!isSkorValidString(next.tugas)) errList.push('Tugas harus 0–100');
+      if (!isSkorValidString(next.uts)) errList.push('UTS harus 0–100');
+      if (!isSkorValidString(next.uas)) errList.push('UAS harus 0–100');
+      el.textContent = errList.join(' · ');
+      el.hidden = errList.length === 0;
+    });
+
+  document
+    .querySelectorAll(`[data-nilai-akhir="${CSS.escape(nis)}"]`)
+    .forEach((el) => {
+      el.textContent = next.akhir === '' ? '-' : String(next.akhir);
+    });
+
+  document
+    .querySelectorAll(`[data-nilai-predikat="${CSS.escape(nis)}"]`)
+    .forEach((el) => {
+      el.textContent = hitungPredikatSingkat(next.akhir);
+    });
 }
 
 function renderInputNilai() {
   const container = document.getElementById('nilai-container');
   const saveBar = document.getElementById('nilai-save-bar');
+  const excelActions = document.getElementById('nilai-excel-actions');
   if (!container) return;
 
   const kelasDiizinkan = getKelasYangDiizinkan();
@@ -141,6 +373,7 @@ function renderInputNilai() {
     (Array.isArray(mapelDiizinkan) && mapelDiizinkan.length === 0)
   ) {
     if (saveBar) saveBar.hidden = true;
+    if (excelActions) excelActions.hidden = true;
     container.innerHTML = `
       <div class="empty-state">
         <h2 class="empty-title">Kelas atau Mata Pelajaran Belum Diatur</h2>
@@ -156,6 +389,7 @@ function renderInputNilai() {
   const semuaSiswa = getDaftarSiswa();
   if (semuaSiswa.length === 0) {
     if (saveBar) saveBar.hidden = true;
+    if (excelActions) excelActions.hidden = true;
     if (isAdmin()) {
       container.innerHTML = `
         <div class="empty-state">
@@ -193,13 +427,15 @@ function renderInputNilai() {
   }
 
   const siswaList = getSiswaKelasNilai();
-  if (siswaList.length === 0) {
+  const mapel = document.getElementById('nilai-mapel')?.value || '';
+  if (siswaList.length === 0 || !mapel) {
     if (saveBar) saveBar.hidden = true;
+    if (excelActions) excelActions.hidden = true;
     container.innerHTML = `
       <div class="empty-state">
-        <h2 class="empty-title">Pilih Kelas Terlebih Dahulu</h2>
+        <h2 class="empty-title">Pilih Kelas &amp; Mata Pelajaran</h2>
         <p class="empty-desc">
-          Pilih salah satu kelas pada kotak di atas untuk menampilkan daftar siswa dan mengisi nilai.
+          Pilih kelas dan mata pelajaran pada kotak di atas untuk mengisi nilai Tugas, UTS, dan UAS.
         </p>
       </div>
     `;
@@ -207,44 +443,75 @@ function renderInputNilai() {
   }
 
   if (saveBar) saveBar.hidden = false;
+  if (excelActions) excelActions.hidden = false;
 
   const cardsHtml = siswaList
     .map((s) => {
-      const draft = nilaiDraft.get(s.id) || { skor: '', catatan: '' };
+      const d = nilaiDraft.get(s.nis) || { tugas: '', uts: '', uas: '', akhir: '' };
       return `
         <article class="student-card">
           <div class="student-card-top">
             <div>
               <h3 class="student-name">${escapeHtml(s.nama)}</h3>
               <p class="student-meta num">
-                NIS ${escapeHtml(s.nis)} · Kelas ${escapeHtml(s.kelas)} ·
-                <span data-nilai-predikat="${escapeHtml(s.id)}">${escapeHtml(
-        hitungPredikatSingkat(draft.skor)
-      )}</span>
+                NIS ${escapeHtml(s.nis)} · Kelas ${escapeHtml(s.kelas)} · Akhir:
+                <strong data-nilai-akhir="${escapeHtml(s.nis)}">${
+        d.akhir === '' ? '-' : escapeHtml(d.akhir)
+      }</strong>
+                (<span data-nilai-predikat="${escapeHtml(s.nis)}">${escapeHtml(
+        hitungPredikatSingkat(d.akhir)
+      )}</span>)
               </p>
             </div>
           </div>
-          <div class="nilai-card-row">
-            <input
-              type="number"
-              min="0"
-              max="100"
-              step="0.1"
-              inputmode="decimal"
-              class="form-input score-input"
-              data-nilai-skor="${escapeHtml(s.id)}"
-              placeholder="0 - 100"
-              value="${escapeHtml(draft.skor)}"
-            />
-            <input
-              type="text"
-              class="form-input note-input-sm"
-              data-nilai-catatan="${escapeHtml(s.id)}"
-              placeholder="Catatan nilai (opsional)"
-              maxlength="200"
-              value="${escapeHtml(draft.catatan)}"
-            />
+          <div class="nilai-inputs-grid">
+            <div class="form-group">
+              <label class="form-label">Tugas</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                inputmode="decimal"
+                class="form-input score-input ${isSkorValidString(d.tugas) ? '' : 'input-invalid'}"
+                data-nilai-field="tugas"
+                data-nilai-nis="${escapeHtml(s.nis)}"
+                placeholder="0-100"
+                value="${escapeHtml(d.tugas)}"
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label">UTS</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                inputmode="decimal"
+                class="form-input score-input ${isSkorValidString(d.uts) ? '' : 'input-invalid'}"
+                data-nilai-field="uts"
+                data-nilai-nis="${escapeHtml(s.nis)}"
+                placeholder="0-100"
+                value="${escapeHtml(d.uts)}"
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label">UAS</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                inputmode="decimal"
+                class="form-input score-input ${isSkorValidString(d.uas) ? '' : 'input-invalid'}"
+                data-nilai-field="uas"
+                data-nilai-nis="${escapeHtml(s.nis)}"
+                placeholder="0-100"
+                value="${escapeHtml(d.uas)}"
+              />
+            </div>
           </div>
+          <p class="field-error-hint" data-nilai-error="${escapeHtml(s.nis)}" hidden></p>
         </article>
       `;
     })
@@ -252,12 +519,15 @@ function renderInputNilai() {
 
   const rowsHtml = siswaList
     .map((s, idx) => {
-      const draft = nilaiDraft.get(s.id) || { skor: '', catatan: '' };
+      const d = nilaiDraft.get(s.nis) || { tugas: '', uts: '', uas: '', akhir: '' };
       return `
         <tr>
           <td class="td-center">${idx + 1}</td>
           <td class="num">${escapeHtml(s.nis)}</td>
-          <td><strong>${escapeHtml(s.nama)}</strong></td>
+          <td>
+            <strong>${escapeHtml(s.nama)}</strong>
+            <p class="field-error-hint" data-nilai-error="${escapeHtml(s.nis)}" hidden></p>
+          </td>
           <td>
             <input
               type="number"
@@ -265,26 +535,52 @@ function renderInputNilai() {
               max="100"
               step="0.1"
               inputmode="decimal"
-              class="form-input score-input"
-              style="width: 110px"
-              data-nilai-skor="${escapeHtml(s.id)}"
-              placeholder="0 - 100"
-              value="${escapeHtml(draft.skor)}"
+              class="form-input score-input ${isSkorValidString(d.tugas) ? '' : 'input-invalid'}"
+              style="width: 96px"
+              data-nilai-field="tugas"
+              data-nilai-nis="${escapeHtml(s.nis)}"
+              placeholder="0-100"
+              value="${escapeHtml(d.tugas)}"
             />
           </td>
-          <td data-nilai-predikat="${escapeHtml(s.id)}">${escapeHtml(
-        hitungPredikatSingkat(draft.skor)
-      )}</td>
           <td>
             <input
-              type="text"
-              class="form-input note-input-sm"
-              data-nilai-catatan="${escapeHtml(s.id)}"
-              placeholder="Catatan..."
-              maxlength="200"
-              value="${escapeHtml(draft.catatan)}"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              inputmode="decimal"
+              class="form-input score-input ${isSkorValidString(d.uts) ? '' : 'input-invalid'}"
+              style="width: 96px"
+              data-nilai-field="uts"
+              data-nilai-nis="${escapeHtml(s.nis)}"
+              placeholder="0-100"
+              value="${escapeHtml(d.uts)}"
             />
           </td>
+          <td>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              inputmode="decimal"
+              class="form-input score-input ${isSkorValidString(d.uas) ? '' : 'input-invalid'}"
+              style="width: 96px"
+              data-nilai-field="uas"
+              data-nilai-nis="${escapeHtml(s.nis)}"
+              placeholder="0-100"
+              value="${escapeHtml(d.uas)}"
+            />
+          </td>
+          <td class="td-num">
+            <strong data-nilai-akhir="${escapeHtml(s.nis)}">${
+        d.akhir === '' ? '-' : escapeHtml(d.akhir)
+      }</strong>
+          </td>
+          <td data-nilai-predikat="${escapeHtml(s.nis)}">${escapeHtml(
+        hitungPredikatSingkat(d.akhir)
+      )}</td>
         </tr>
       `;
     })
@@ -299,9 +595,11 @@ function renderInputNilai() {
             <th class="td-center">No</th>
             <th>NIS</th>
             <th>Nama Siswa</th>
-            <th>Nilai (0–100)</th>
-            <th>Keterangan</th>
-            <th>Catatan Guru</th>
+            <th>Tugas (${bobotNilai.tugas}%)</th>
+            <th>UTS (${bobotNilai.uts}%)</th>
+            <th>UAS (${bobotNilai.uas}%)</th>
+            <th class="td-num">Akhir</th>
+            <th>Predikat</th>
           </tr>
         </thead>
         <tbody>${rowsHtml}</tbody>
@@ -309,158 +607,163 @@ function renderInputNilai() {
     </div>
   `;
 
-  container.querySelectorAll('input[data-nilai-skor]').forEach((input) => {
+  container.querySelectorAll('input[data-nilai-field]').forEach((input) => {
     input.addEventListener('input', () => {
-      sinkronInputNilai(input.dataset.nilaiSkor, 'skor', input.value);
-    });
-  });
-
-  container.querySelectorAll('input[data-nilai-catatan]').forEach((input) => {
-    input.addEventListener('input', () => {
-      sinkronInputNilai(input.dataset.nilaiCatatan, 'catatan', input.value);
+      sinkronInputNilai(input.dataset.nilaiNis, input.dataset.nilaiField, input.value);
     });
   });
 }
 
 function isiDraftDariFilterSaatIni() {
   const kelas = document.getElementById('nilai-kelas')?.value || '';
-  const mapel = getMapelAktif();
-  const jenis = document.getElementById('nilai-jenis')?.value || 'Tugas';
-  const judul = (document.getElementById('nilai-judul')?.value || '').trim();
-  const tanggal = document.getElementById('nilai-tanggal')?.value || '';
+  const mapel = document.getElementById('nilai-mapel')?.value || '';
+  const semester = document.getElementById('nilai-semester')?.value || 'Ganjil';
 
   const siswaList = getSiswaKelasNilai();
   nilaiDraft = new Map();
 
   siswaList.forEach((s) => {
     const cocok = semuaNilaiCache.find(
-      (n) =>
-        n.siswaId === s.id &&
-        n.kelas === kelas &&
-        n.mapel === mapel &&
-        n.jenis === jenis &&
-        n.judul === judul &&
-        n.tanggal === tanggal
+      (n) => n.nis === s.nis && n.kelas === kelas && n.mapel === mapel && n.semester === semester
     );
     if (cocok) {
-      nilaiDraft.set(s.id, {
-        skor: String(cocok.skor),
-        catatan: cocok.catatan || '',
-        docId: cocok.id
-      });
+      const tugas = cocok.tugas !== null && cocok.tugas !== undefined ? String(cocok.tugas) : '';
+      const uts = cocok.uts !== null && cocok.uts !== undefined ? String(cocok.uts) : '';
+      const uas = cocok.uas !== null && cocok.uas !== undefined ? String(cocok.uas) : '';
+      const akhir = hitungAkhir(tugas, uts, uas);
+      nilaiDraft.set(s.nis, { tugas, uts, uas, akhir, exists: true });
     } else {
-      nilaiDraft.set(s.id, { skor: '', catatan: '', docId: null });
+      nilaiDraft.set(s.nis, { tugas: '', uts: '', uas: '', akhir: '', exists: false });
     }
   });
 
+  tutupPratinjauImportNilai();
   renderInputNilai();
 }
 
-function renderRiwayatNilai() {
-  const container = document.getElementById('riwayat-nilai-container');
-  if (!container) return;
+// ==========================================================================
+// Pratinjau Impor Nilai Excel + Simpan Batch
+// ==========================================================================
 
-  if (semuaNilaiCache.length === 0) {
-    container.innerHTML = `
-      <p style="margin:0; color: var(--text-secondary);">
-        Belum ada nilai yang disimpan. Isi nilai siswa di atas lalu tekan "Simpan Semua Nilai".
-      </p>
-    `;
+function tutupPratinjauImportNilai() {
+  previewNilaiState = null;
+  const panel = document.getElementById('nilai-import-preview-panel');
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+  }
+}
+
+function renderPratinjauImportNilai() {
+  const panel = document.getElementById('nilai-import-preview-panel');
+  if (!panel) return;
+
+  if (!previewNilaiState) {
+    panel.hidden = true;
+    panel.innerHTML = '';
     return;
   }
 
-  const grupMap = new Map();
-  semuaNilaiCache.forEach((n) => {
-    const key = `${n.kelas}||${n.mapel}||${n.jenis}||${n.judul}||${n.tanggal}`;
-    if (!grupMap.has(key)) {
-      grupMap.set(key, {
-        key,
-        kelas: n.kelas,
-        mapel: n.mapel,
-        jenis: n.jenis,
-        judul: n.judul,
-        tanggal: n.tanggal,
-        items: []
-      });
-    }
-    grupMap.get(key).items.push(n);
-  });
+  const { fileName, kelas, mapel, semester, allRows, validRows, invalidRows } = previewNilaiState;
+  panel.hidden = false;
 
-  const grupList = Array.from(grupMap.values()).sort((a, b) =>
-    String(b.tanggal).localeCompare(String(a.tanggal))
-  );
+  const tampilAngka = (val) => (val === null || val === undefined || val === '' ? '-' : String(val));
 
-  const cardsHtml = grupList
+  const cardsHtml = allRows
     .map(
-      (g) => `
-      <article class="student-card">
+      (r) => `
+      <article class="student-card ${r.valid ? '' : 'student-card--error'}">
         <div>
-          <h3 class="student-name">${escapeHtml(g.judul)} (${escapeHtml(g.jenis)})</h3>
+          <h3 class="student-name">
+            Baris ${r.barisKe}: ${escapeHtml(r.nama)} (NIS ${escapeHtml(r.nis || '-')})
+          </h3>
           <p class="student-meta num">
-            Kelas ${escapeHtml(g.kelas)} · ${escapeHtml(g.mapel)} · ${escapeHtml(
-        formatTanggalIndonesia(g.tanggal)
-      )} · ${g.items.length} siswa
+            Tugas: ${escapeHtml(tampilAngka(r.tugas))} · UTS: ${escapeHtml(
+        tampilAngka(r.uts)
+      )} · UAS: ${escapeHtml(tampilAngka(r.uas))} · Akhir: ${escapeHtml(tampilAngka(r.akhir))}
           </p>
-        </div>
-        <div class="button-pair">
-          <button type="button" class="btn btn-secondary btn-sm btn-buka-grup" data-key="${escapeHtml(
-            g.key
-          )}">
-            Buka / Ubah
-          </button>
-          <button type="button" class="btn btn-danger-outline btn-sm btn-hapus-grup" data-key="${escapeHtml(
-            g.key
-          )}">
-            Hapus
-          </button>
+          <p class="${r.valid ? 'ok-reason-text' : 'error-reason-text'}" style="margin:6px 0 0">
+            ${r.valid ? 'Siap disimpan' : escapeHtml(r.alasanError)}
+          </p>
         </div>
       </article>
     `
     )
     .join('');
 
-  const rowsHtml = grupList
+  const rowsHtml = allRows
     .map(
-      (g) => `
-      <tr>
-        <td class="num">${escapeHtml(formatTanggalIndonesia(g.tanggal))}</td>
-        <td>Kelas ${escapeHtml(g.kelas)}</td>
-        <td>${escapeHtml(g.mapel)}</td>
-        <td>${escapeHtml(g.jenis)}</td>
-        <td><strong>${escapeHtml(g.judul)}</strong></td>
-        <td class="td-center">${g.items.length} siswa</td>
+      (r) => `
+      <tr class="${r.valid ? '' : 'row-error'}">
+        <td class="td-center num">${r.barisKe}</td>
+        <td class="num">${escapeHtml(r.nis || '-')}</td>
+        <td><strong>${escapeHtml(r.nama)}</strong></td>
+        <td class="td-num">${escapeHtml(tampilAngka(r.tugas))}</td>
+        <td class="td-num">${escapeHtml(tampilAngka(r.uts))}</td>
+        <td class="td-num">${escapeHtml(tampilAngka(r.uas))}</td>
+        <td class="td-num"><strong>${escapeHtml(tampilAngka(r.akhir))}</strong></td>
         <td>
-          <div class="table-actions">
-            <button type="button" class="btn btn-secondary btn-sm btn-buka-grup" data-key="${escapeHtml(
-              g.key
-            )}">
-              Buka / Ubah
-            </button>
-            <button type="button" class="btn btn-danger-outline btn-sm btn-hapus-grup" data-key="${escapeHtml(
-              g.key
-            )}">
-              Hapus
-            </button>
-          </div>
+          ${
+            r.valid
+              ? '<span class="ok-reason-text">Siap disimpan</span>'
+              : `<span class="error-reason-text">${escapeHtml(r.alasanError)}</span>`
+          }
         </td>
       </tr>
     `
     )
     .join('');
 
-  container.innerHTML = `
+  panel.innerHTML = `
+    <div class="preview-header">
+      <div>
+        <h2 class="section-subtitle">Pratinjau Impor Nilai: ${escapeHtml(fileName)}</h2>
+        <p class="section-hint">
+          Kelas ${escapeHtml(kelas)} · ${escapeHtml(mapel)} · Semester ${escapeHtml(semester)}
+        </p>
+      </div>
+      <div class="button-pair">
+        <button type="button" id="btn-batal-preview-nilai" class="btn btn-secondary">
+          Batal
+        </button>
+        <button
+          type="button"
+          id="btn-simpan-preview-nilai"
+          class="btn btn-primary"
+          ${validRows.length === 0 ? 'disabled' : ''}
+        >
+          Simpan (${validRows.length} Nilai Valid)
+        </button>
+      </div>
+    </div>
+
+    <div class="preview-summary-chips">
+      <span class="preview-stat">Total Baris: ${allRows.length}</span>
+      <span class="preview-stat preview-stat--ok">Valid: ${validRows.length}</span>
+      <span class="preview-stat preview-stat--err">Bermasalah (Merah): ${invalidRows.length}</span>
+    </div>
+
+    ${
+      invalidRows.length > 0
+        ? `<p class="section-hint" style="margin:0 0 12px; color:#b91c1c;">
+            Baris bertanda merah tidak akan disimpan. Perbaiki di Excel lalu unggah ulang, atau klik Simpan untuk menyimpan nilai yang valid saja.
+          </p>`
+        : ''
+    }
+
     <div class="card-list">${cardsHtml}</div>
     <div class="desktop-table-wrap">
       <table class="data-table">
         <thead>
           <tr>
-            <th>Tanggal</th>
-            <th>Kelas</th>
-            <th>Mata Pelajaran</th>
-            <th>Jenis</th>
-            <th>Nama Penilaian</th>
-            <th class="td-center">Jumlah</th>
-            <th class="td-num">Tindakan</th>
+            <th class="td-center">Baris</th>
+            <th>NIS</th>
+            <th>Nama</th>
+            <th class="td-num">Tugas</th>
+            <th class="td-num">UTS</th>
+            <th class="td-num">UAS</th>
+            <th class="td-num">Akhir</th>
+            <th>Keterangan</th>
           </tr>
         </thead>
         <tbody>${rowsHtml}</tbody>
@@ -468,96 +771,103 @@ function renderRiwayatNilai() {
     </div>
   `;
 
-  container.querySelectorAll('.btn-buka-grup').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const g = grupList.find((item) => item.key === btn.dataset.key);
-      if (!g) return;
-
-      const selectKelas = document.getElementById('nilai-kelas');
-      const selectMapel = document.getElementById('nilai-mapel');
-      const groupCustom = document.getElementById('group-nilai-mapel-custom');
-      const inputCustom = document.getElementById('nilai-mapel-custom');
-      const selectJenis = document.getElementById('nilai-jenis');
-      const inputJudul = document.getElementById('nilai-judul');
-      const inputTanggal = document.getElementById('nilai-tanggal');
-
-      if (selectKelas) selectKelas.value = g.kelas;
-
-      if (selectMapel) {
-        const adaDiPilihan = Array.from(selectMapel.options).some((opt) => opt.value === g.mapel);
-        if (adaDiPilihan) {
-          selectMapel.value = g.mapel;
-          if (groupCustom) groupCustom.hidden = true;
-        } else if (isAdmin()) {
-          selectMapel.value = '__lainnya__';
-          if (groupCustom) groupCustom.hidden = false;
-          if (inputCustom) inputCustom.value = g.mapel;
-        }
-      }
-
-      if (selectJenis) selectJenis.value = g.jenis;
-      if (inputJudul) inputJudul.value = g.judul;
-      if (inputTanggal) inputTanggal.value = g.tanggal;
-
-      isiDraftDariFilterSaatIni();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      tampilkanSukses(`Nilai "${g.judul}" kelas ${g.kelas} sudah dimuat. Silakan ubah lalu simpan.`);
-    });
-  });
-
-  container.querySelectorAll('.btn-hapus-grup').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const g = grupList.find((item) => item.key === btn.dataset.key);
-      if (!g) return;
-
-      const yakin = await konfirmasiAksi({
-        title: 'Hapus Penilaian Ini?',
-        message: `Apakah Anda yakin ingin menghapus semua nilai "${g.judul}" (${g.mapel}, Kelas ${g.kelas})?`,
-        confirmLabel: 'Ya, Hapus Semua',
-        danger: true
-      });
-      if (!yakin) return;
-
-      const { db } = getFirebaseServices();
-      try {
-        const chunkSize = 400;
-        for (let i = 0; i < g.items.length; i += chunkSize) {
-          const chunk = g.items.slice(i, i + chunkSize);
-          const batch = writeBatch(db);
-          chunk.forEach((n) => batch.delete(doc(db, 'nilai', n.id)));
-          await batch.commit();
-        }
-        tampilkanSukses(`Penilaian "${g.judul}" kelas ${g.kelas} berhasil dihapus.`);
-        await muatHalamanNilai();
-      } catch (error) {
-        try {
-          handleFirestoreError(error, OperationType.DELETE, 'nilai');
-        } catch (wrapped) {
-          tampilkanError(wrapped.friendlyMessage);
-        }
-      }
-    });
-  });
+  panel.querySelector('#btn-batal-preview-nilai')?.addEventListener('click', tutupPratinjauImportNilai);
+  panel
+    .querySelector('#btn-simpan-preview-nilai')
+    ?.addEventListener('click', simpanHasilImportNilaiBatch);
 }
 
-export async function muatHalamanNilai() {
-  const tanggalInput = document.getElementById('nilai-tanggal');
-  if (tanggalInput && !tanggalInput.value) {
-    tanggalInput.value = tanggalHariIni();
+async function simpanHasilImportNilaiBatch() {
+  if (!previewNilaiState || previewNilaiState.validRows.length === 0) return;
+
+  const { kelas, mapel, semester, validRows, invalidRows } = previewNilaiState;
+  const btn = document.getElementById('btn-simpan-preview-nilai');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Menyimpan Nilai...';
   }
 
-  sinkronkanDropdownMapelInput();
+  const { db } = getFirebaseServices();
 
+  try {
+    const chunkSize = 500;
+    for (let i = 0; i < validRows.length; i += chunkSize) {
+      const chunk = validRows.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+
+      chunk.forEach((row) => {
+        const nilaiId = buatIdAman(`${row.nis}_${mapel}_${semester}`);
+        const ref = doc(db, 'nilai', nilaiId);
+        const sudahAda = semuaNilaiCache.some(
+          (n) => n.nis === row.nis && n.kelas === kelas && n.mapel === mapel && n.semester === semester
+        );
+
+        if (sudahAda) {
+          batch.update(ref, {
+            tugas: row.tugas,
+            uts: row.uts,
+            uas: row.uas,
+            akhir: row.akhir,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          batch.set(ref, {
+            nis: row.nis,
+            kelas,
+            mapel,
+            semester,
+            tugas: row.tugas,
+            uts: row.uts,
+            uas: row.uas,
+            akhir: row.akhir,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        }
+      });
+
+      await batch.commit();
+    }
+
+    perbaruiCacheNilaiSetelahSimpan(kelas, mapel, semester, validRows);
+    const lewat = invalidRows.length > 0 ? ` (${invalidRows.length} baris bermasalah dilewati.)` : '';
+    tampilkanSukses(`${validRows.length} nilai ${mapel} kelas ${kelas} berhasil disimpan.${lewat}`);
+    tutupPratinjauImportNilai();
+    isiDraftDariFilterSaatIni();
+  } catch (error) {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = `Simpan (${validRows.length} Nilai Valid)`;
+    }
+    try {
+      handleFirestoreError(error, OperationType.WRITE, 'nilai');
+    } catch (wrapped) {
+      tampilkanError(wrapped.friendlyMessage);
+    }
+  }
+}
+
+async function muatNilaiUntukFilterSaatIni(paksaMuatUlang = false) {
   const kelasDiizinkan = getKelasYangDiizinkan();
   const mapelDiizinkan = getMapelYangDiizinkan();
+  const kelas = document.getElementById('nilai-kelas')?.value || '';
+  const mapel = document.getElementById('nilai-mapel')?.value || '';
 
   if (
     (Array.isArray(kelasDiizinkan) && kelasDiizinkan.length === 0) ||
-    (Array.isArray(mapelDiizinkan) && mapelDiizinkan.length === 0)
+    (Array.isArray(mapelDiizinkan) && mapelDiizinkan.length === 0) ||
+    !kelas ||
+    (!isAdmin() && !mapel)
   ) {
     semuaNilaiCache = [];
     isiDraftDariFilterSaatIni();
-    renderRiwayatNilai();
+    return;
+  }
+
+  const scopeKey = getNilaiScopeKey(kelas, mapel);
+  if (!paksaMuatUlang && cacheNilaiPerScope.has(scopeKey)) {
+    semuaNilaiCache = cacheNilaiPerScope.get(scopeKey) || [];
+    isiDraftDariFilterSaatIni();
     return;
   }
 
@@ -565,25 +875,16 @@ export async function muatHalamanNilai() {
 
   try {
     const items = [];
-    if (isAdmin()) {
-      const snap = await getDocs(collection(db, 'nilai'));
-      snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
-    } else {
-      // Query per mapel yang diampu agar sesuai aturan keamanan Firestore dan batas 1 klausa "in"
-      const queries = mapelDiizinkan.map((mapel) =>
-        getDocs(
-          query(
-            collection(db, 'nilai'),
-            where('kelas', 'in', kelasDiizinkan.slice(0, 30)),
-            where('mapel', '==', mapel)
-          )
-        )
-      );
-      const snapshots = await Promise.all(queries);
-      snapshots.forEach((snap) => {
-        snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
-      });
-    }
+    const q = isAdmin()
+      ? query(collection(db, 'nilai'), where('kelas', '==', kelas))
+      : query(
+          collection(db, 'nilai'),
+          where('kelas', '==', kelas),
+          where('mapel', '==', mapel)
+        );
+    const snap = await getDocs(q);
+    snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
+    cacheNilaiPerScope.set(scopeKey, items);
     semuaNilaiCache = items;
   } catch (error) {
     try {
@@ -594,30 +895,38 @@ export async function muatHalamanNilai() {
   }
 
   isiDraftDariFilterSaatIni();
-  renderRiwayatNilai();
+}
+
+export async function muatHalamanNilai() {
+  await muatBobotNilai();
+  sinkronkanDropdownMapelInput();
+  await muatNilaiUntukFilterSaatIni();
+}
+
+function parseSkorOpsional(raw, namaSiswa, labelKomponen) {
+  const teks = String(raw ?? '').trim();
+  if (teks === '') return { ok: true, value: null };
+  const angka = Number(teks);
+  if (Number.isNaN(angka) || angka < 0 || angka > 100) {
+    return {
+      ok: false,
+      error: `Nilai ${labelKomponen} untuk ${namaSiswa} harus angka antara 0 sampai 100 (saat ini: "${teks}").`
+    };
+  }
+  return { ok: true, value: Math.round(angka * 10) / 10 };
 }
 
 async function simpanSemuaNilai() {
   const kelas = document.getElementById('nilai-kelas')?.value || '';
-  const mapel = getMapelAktif();
-  const jenis = document.getElementById('nilai-jenis')?.value || 'Tugas';
-  const judul = (document.getElementById('nilai-judul')?.value || '').trim();
-  const tanggal = document.getElementById('nilai-tanggal')?.value || '';
+  const mapel = document.getElementById('nilai-mapel')?.value || '';
+  const semester = document.getElementById('nilai-semester')?.value || 'Ganjil';
 
   if (!kelas) {
     tampilkanError('Silakan pilih kelas terlebih dahulu.');
     return;
   }
   if (!mapel) {
-    tampilkanError('Nama mata pelajaran belum diisi atau belum tersedia.');
-    return;
-  }
-  if (!judul) {
-    tampilkanError('Nama tugas atau ulangan belum diisi.');
-    return;
-  }
-  if (!tanggal || !/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) {
-    tampilkanError('Tanggal penilaian belum valid.');
+    tampilkanError('Silakan pilih mata pelajaran terlebih dahulu.');
     return;
   }
 
@@ -625,27 +934,42 @@ async function simpanSemuaNilai() {
   const dataUntukSimpan = [];
 
   for (const s of siswaList) {
-    const draft = nilaiDraft.get(s.id);
+    const draft = nilaiDraft.get(s.nis);
     if (!draft) continue;
-    const rawSkor = String(draft.skor ?? '').trim();
-    if (rawSkor === '') continue;
 
-    const angka = Number(rawSkor);
-    if (Number.isNaN(angka) || angka < 0 || angka > 100) {
-      tampilkanError(`Nilai untuk ${s.nama} harus berupa angka antara 0 sampai 100.`);
+    const cekTugas = parseSkorOpsional(draft.tugas, s.nama, 'Tugas');
+    if (!cekTugas.ok) {
+      tampilkanError(cekTugas.error);
+      return;
+    }
+    const cekUts = parseSkorOpsional(draft.uts, s.nama, 'UTS');
+    if (!cekUts.ok) {
+      tampilkanError(cekUts.error);
+      return;
+    }
+    const cekUas = parseSkorOpsional(draft.uas, s.nama, 'UAS');
+    if (!cekUas.ok) {
+      tampilkanError(cekUas.error);
       return;
     }
 
+    if (cekTugas.value === null && cekUts.value === null && cekUas.value === null) {
+      continue;
+    }
+
+    const akhir = hitungAkhir(draft.tugas, draft.uts, draft.uas);
     dataUntukSimpan.push({
       siswa: s,
-      skor: Math.round(angka * 100) / 100,
-      catatan: String(draft.catatan || '').trim().slice(0, 200),
-      docId: draft.docId
+      tugas: cekTugas.value,
+      uts: cekUts.value,
+      uas: cekUas.value,
+      akhir: Number(akhir),
+      exists: draft.exists
     });
   }
 
   if (dataUntukSimpan.length === 0) {
-    tampilkanError('Silakan isi nilai minimal untuk satu siswa sebelum menyimpan.');
+    tampilkanError('Isi minimal satu nilai (Tugas, UTS, atau UAS) sebelum menyimpan.');
     return;
   }
 
@@ -655,41 +979,36 @@ async function simpanSemuaNilai() {
     btn.textContent = 'Menyimpan Nilai...';
   }
 
-  const { auth, db } = getFirebaseServices();
-  const user = auth.currentUser;
+  const { db } = getFirebaseServices();
 
   try {
-    const chunkSize = 400;
+    const chunkSize = 500;
     for (let i = 0; i < dataUntukSimpan.length; i += chunkSize) {
       const chunk = dataUntukSimpan.slice(i, i + chunkSize);
       const batch = writeBatch(db);
 
       chunk.forEach((item) => {
-        if (item.docId) {
-          batch.update(doc(db, 'nilai', item.docId), {
-            namaSiswa: item.siswa.nama,
-            kelas: item.siswa.kelas,
-            mapel,
-            jenis,
-            judul,
-            tanggal,
-            skor: item.skor,
-            catatan: item.catatan,
+        const nilaiId = buatIdAman(`${item.siswa.nis}_${mapel}_${semester}`);
+        const ref = doc(db, 'nilai', nilaiId);
+
+        if (item.exists) {
+          batch.update(ref, {
+            tugas: item.tugas,
+            uts: item.uts,
+            uas: item.uas,
+            akhir: item.akhir,
             updatedAt: serverTimestamp()
           });
         } else {
-          const ref = doc(collection(db, 'nilai'));
           batch.set(ref, {
-            ownerId: user.uid,
-            siswaId: item.siswa.id,
-            namaSiswa: item.siswa.nama,
+            nis: item.siswa.nis,
             kelas: item.siswa.kelas,
             mapel,
-            jenis,
-            judul,
-            tanggal,
-            skor: item.skor,
-            catatan: item.catatan,
+            semester,
+            tugas: item.tugas,
+            uts: item.uts,
+            uas: item.uas,
+            akhir: item.akhir,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
@@ -699,10 +1018,23 @@ async function simpanSemuaNilai() {
       await batch.commit();
     }
 
-    tampilkanSukses(
-      `Nilai ${judul} (${mapel}) untuk ${dataUntukSimpan.length} siswa kelas ${kelas} berhasil disimpan.`
+    perbaruiCacheNilaiSetelahSimpan(
+      kelas,
+      mapel,
+      semester,
+      dataUntukSimpan.map((item) => ({
+        nis: item.siswa.nis,
+        tugas: item.tugas,
+        uts: item.uts,
+        uas: item.uas,
+        akhir: item.akhir
+      }))
     );
-    await muatHalamanNilai();
+
+    tampilkanSukses(
+      `Nilai ${mapel} (Semester ${semester}) untuk ${dataUntukSimpan.length} siswa kelas ${kelas} berhasil disimpan.`
+    );
+    isiDraftDariFilterSaatIni();
   } catch (error) {
     try {
       handleFirestoreError(error, OperationType.WRITE, 'nilai');
@@ -718,26 +1050,69 @@ async function simpanSemuaNilai() {
 }
 
 export function initHalamanNilai() {
-  const tanggalInput = document.getElementById('nilai-tanggal');
-  if (tanggalInput && !tanggalInput.value) {
-    tanggalInput.value = tanggalHariIni();
-  }
+  document.getElementById('nilai-kelas')?.addEventListener('change', () => muatNilaiUntukFilterSaatIni());
+  document.getElementById('nilai-mapel')?.addEventListener('change', () => muatNilaiUntukFilterSaatIni());
+  document.getElementById('nilai-semester')?.addEventListener('change', isiDraftDariFilterSaatIni);
+  document.getElementById('btn-simpan-nilai')?.addEventListener('click', simpanSemuaNilai);
+  document.getElementById('btn-atur-bobot-nilai')?.addEventListener('click', bukaModalBobotNilai);
 
-  const selectMapel = document.getElementById('nilai-mapel');
-  const groupCustom = document.getElementById('group-nilai-mapel-custom');
-  selectMapel?.addEventListener('change', () => {
-    if (groupCustom) {
-      groupCustom.hidden = selectMapel.value !== '__lainnya__';
+  document.getElementById('btn-template-nilai-excel')?.addEventListener('click', () => {
+    const kelas = document.getElementById('nilai-kelas')?.value || '';
+    const mapel = document.getElementById('nilai-mapel')?.value || '';
+    const semester = document.getElementById('nilai-semester')?.value || 'Ganjil';
+    const siswaList = getSiswaKelasNilai();
+    if (!kelas || !mapel || siswaList.length === 0) {
+      tampilkanError('Pilih kelas yang memiliki siswa dan mata pelajaran terlebih dahulu.');
+      return;
     }
-    isiDraftDariFilterSaatIni();
+    try {
+      const fileName = downloadTemplateNilaiExcel({
+        siswaList,
+        kelasLabel: kelas,
+        mapelLabel: mapel,
+        semesterLabel: semester
+      });
+      tampilkanSukses(`Template nilai "${fileName}" berhasil diunduh.`);
+    } catch (err) {
+      tampilkanError(err.message);
+    }
   });
 
-  document.getElementById('nilai-kelas')?.addEventListener('change', isiDraftDariFilterSaatIni);
-  document.getElementById('nilai-jenis')?.addEventListener('change', isiDraftDariFilterSaatIni);
-  document.getElementById('nilai-judul')?.addEventListener('change', isiDraftDariFilterSaatIni);
-  document.getElementById('nilai-tanggal')?.addEventListener('change', isiDraftDariFilterSaatIni);
-  document.getElementById('nilai-mapel-custom')?.addEventListener('change', isiDraftDariFilterSaatIni);
+  document.getElementById('input-import-nilai-excel')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
 
-  document.getElementById('btn-simpan-nilai')?.addEventListener('click', simpanSemuaNilai);
-  document.getElementById('btn-muat-riwayat-nilai')?.addEventListener('click', muatHalamanNilai);
+    const kelas = document.getElementById('nilai-kelas')?.value || '';
+    const mapel = document.getElementById('nilai-mapel')?.value || '';
+    const semester = document.getElementById('nilai-semester')?.value || 'Ganjil';
+    const siswaList = getSiswaKelasNilai();
+
+    if (!kelas || !mapel || siswaList.length === 0) {
+      tampilkanError('Pilih kelas yang memiliki siswa dan mata pelajaran sebelum mengimpor Excel.');
+      return;
+    }
+
+    try {
+      tampilkanInfo('Sedang membaca dan memeriksa file Excel nilai...');
+      const siswaKelasMap = new Map(siswaList.map((s) => [s.nis, s]));
+      const { allRows, validRows, invalidRows } = await parseNilaiExcelFile(file, {
+        siswaKelasMap,
+        bobot: bobotNilai
+      });
+
+      previewNilaiState = {
+        fileName: file.name,
+        kelas,
+        mapel,
+        semester,
+        allRows,
+        validRows,
+        invalidRows
+      };
+      renderPratinjauImportNilai();
+    } catch (error) {
+      tampilkanError(error?.message || 'Gagal membaca file Excel nilai.');
+    }
+  });
 }

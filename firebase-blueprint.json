@@ -53,21 +53,9 @@
     },
     "Siswa": {
       "title": "Siswa",
-      "description": "Data pokok siswa per kelas di SMP Muhammadiyah Al Furqan",
+      "description": "Data pokok siswa dengan ID dokumen berupa NIS: siswa/{nis}",
       "type": "object",
       "properties": {
-        "ownerId": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "nis": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 30,
-          "pattern": "^[a-zA-Z0-9._\\-]+$"
-        },
         "nama": {
           "type": "string",
           "minLength": 1,
@@ -76,14 +64,12 @@
         "kelas": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 20
+          "maxLength": 20,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
-        "jenisKelamin": {
+        "jk": {
           "type": "string",
           "enum": ["L", "P"]
-        },
-        "aktif": {
-          "type": "boolean"
         },
         "createdAt": {
           "type": "string",
@@ -94,48 +80,84 @@
           "format": "date-time"
         }
       },
-      "required": ["ownerId", "nis", "nama", "kelas", "jenisKelamin", "aktif", "createdAt", "updatedAt"]
+      "required": ["nama", "kelas", "jk", "createdAt", "updatedAt"]
+    },
+    "Kelas": {
+      "title": "Kelas",
+      "description": "Master data kelas sekolah: kelas/{id}",
+      "type": "object",
+      "properties": {
+        "nama": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "waliKelas": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "tahunAjaran": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["nama", "waliKelas", "tahunAjaran", "createdAt", "updatedAt"]
+    },
+    "Mapel": {
+      "title": "Mapel",
+      "description": "Master data mata pelajaran: mapel/{id}",
+      "type": "object",
+      "properties": {
+        "nama": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "guruId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["nama", "guruId", "createdAt", "updatedAt"]
     },
     "Absensi": {
       "title": "Absensi",
-      "description": "Catatan kehadiran harian siswa per tanggal dan kelas",
+      "description": "Catatan kehadiran harian per kelas dan tanggal: absensi/{kelasId_tanggal}",
       "type": "object",
       "properties": {
-        "ownerId": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "siswaId": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "namaSiswa": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 100
-        },
-        "kelas": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 20
-        },
         "tanggal": {
           "type": "string",
           "minLength": 10,
           "maxLength": 10,
           "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
         },
-        "status": {
+        "kelas": {
           "type": "string",
-          "enum": ["Hadir", "Sakit", "Izin", "Alpa"]
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
-        "keterangan": {
-          "type": "string",
-          "maxLength": 200
+        "records": {
+          "type": "object",
+          "description": "Peta NIS ke status kehadiran ('H' | 'S' | 'I' | 'A')"
         },
         "createdAt": {
           "type": "string",
@@ -146,61 +168,45 @@
           "format": "date-time"
         }
       },
-      "required": ["ownerId", "siswaId", "namaSiswa", "kelas", "tanggal", "status", "keterangan", "createdAt", "updatedAt"]
+      "required": ["tanggal", "kelas", "records", "createdAt", "updatedAt"]
     },
     "Nilai": {
       "title": "Nilai",
-      "description": "Nilai siswa per mata pelajaran, kelas, dan jenis penilaian",
+      "description": "Nilai siswa per mata pelajaran dan semester: nilai/{nis_mapel_semester}",
       "type": "object",
       "properties": {
-        "ownerId": {
+        "nis": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 128,
+          "maxLength": 30,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "siswaId": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "namaSiswa": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 100
         },
         "kelas": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 20
+          "maxLength": 20,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
         "mapel": {
           "type": "string",
           "minLength": 1,
           "maxLength": 60
         },
-        "jenis": {
+        "semester": {
           "type": "string",
-          "enum": ["Tugas", "UH", "PTS", "PAS", "Praktik"]
+          "enum": ["Ganjil", "Genap"]
         },
-        "judul": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 100
-        },
-        "tanggal": {
-          "type": "string",
-          "minLength": 10,
-          "maxLength": 10,
-          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-        },
-        "skor": {
+        "tugas": {
           "type": "number"
         },
-        "catatan": {
-          "type": "string",
-          "maxLength": 200
+        "uts": {
+          "type": "number"
+        },
+        "uas": {
+          "type": "number"
+        },
+        "akhir": {
+          "type": "number"
         },
         "createdAt": {
           "type": "string",
@@ -211,7 +217,63 @@
           "format": "date-time"
         }
       },
-      "required": ["ownerId", "siswaId", "namaSiswa", "kelas", "mapel", "jenis", "judul", "tanggal", "skor", "catatan", "createdAt", "updatedAt"]
+      "required": ["nis", "kelas", "mapel", "semester", "akhir", "createdAt", "updatedAt"]
+    },
+    "RekapAbsen": {
+      "title": "RekapAbsen",
+      "description": "Ringkasan H/S/I/A bulanan per kelas: rekapAbsen/{kelasId_bulan}",
+      "type": "object",
+      "properties": {
+        "kelas": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "bulan": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^\\d{4}-\\d{2}$"
+        },
+        "ringkasan": {
+          "type": "object",
+          "description": "Ringkasan H/S/I/A per NIS siswa dalam bulan tersebut"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["kelas", "bulan", "ringkasan", "updatedAt"]
+    },
+    "PengaturanBobotNilai": {
+      "title": "PengaturanBobotNilai",
+      "description": "Pengaturan bobot nilai akhir (Tugas, UTS, UAS) yang diatur Admin",
+      "type": "object",
+      "properties": {
+        "tugas": { "type": "number" },
+        "uts": { "type": "number" },
+        "uas": { "type": "number" },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["tugas", "uts", "uas", "updatedAt"]
+    },
+    "PengaturanKkm": {
+      "title": "PengaturanKkm",
+      "description": "Pengaturan nilai KKM sekolah (0-100) untuk Rekap Nilai",
+      "type": "object",
+      "properties": {
+        "kkm": { "type": "number" },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["kkm", "updatedAt"]
     }
   },
   "firestore": {
@@ -219,17 +281,33 @@
       "schema": { "$ref": "#/entities/User" },
       "description": "Profil dan hak akses pengguna (admin, guru, wali_kelas)"
     },
-    "/siswa/{siswaId}": {
+    "/siswa/{nis}": {
       "schema": { "$ref": "#/entities/Siswa" },
-      "description": "Daftar data siswa sekolah (dikelola Admin, dibaca Guru/Wali Kelas sesuai kelasnya)"
+      "description": "Data siswa dengan ID dokumen NIS: nama, kelas, jk"
+    },
+    "/kelas/{kelasId}": {
+      "schema": { "$ref": "#/entities/Kelas" },
+      "description": "Daftar kelas: nama, waliKelas, tahunAjaran"
+    },
+    "/mapel/{mapelId}": {
+      "schema": { "$ref": "#/entities/Mapel" },
+      "description": "Daftar mata pelajaran: nama, guruId"
     },
     "/absensi/{absensiId}": {
       "schema": { "$ref": "#/entities/Absensi" },
-      "description": "Rekam absensi harian siswa (diinput Guru kelas yang diajar atau Admin, dibaca Wali Kelas)"
+      "description": "Absensi harian kelas ({kelasId_tanggal}): tanggal, kelas, records {nis: H|S|I|A}"
     },
     "/nilai/{nilaiId}": {
       "schema": { "$ref": "#/entities/Nilai" },
-      "description": "Rekam nilai siswa (diinput Guru mapel & kelas yang diajar atau Admin, dibaca Wali Kelas)"
+      "description": "Nilai siswa ({nis_mapel_semester}): nis, kelas, mapel, semester, tugas, uts, uas, akhir"
+    },
+    "/rekapAbsen/{rekapId}": {
+      "schema": { "$ref": "#/entities/RekapAbsen" },
+      "description": "Ringkasan absensi bulanan ({kelasId_bulan}): ringkasan H/S/I/A per siswa"
+    },
+    "/pengaturan/{pengaturanId}": {
+      "schema": { "$ref": "#/entities/PengaturanBobotNilai" },
+      "description": "Pengaturan sekolah seperti bobot nilai akhir (bobotNilai) dan KKM (kkm)"
     }
   }
 }
