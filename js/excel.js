@@ -4,14 +4,76 @@
 // serta unduh rekap absen dan rekap nilai.
 // ==========================================================================
 
+import { APP_NAME, APP_SHORT_NAME, SEKOLAH } from './config.js';
+
+const MAX_EXCEL_SIZE_BYTES = 5 * 1024 * 1024;
+const FORMAT_EXCEL_RE = /\.(xlsx|xls|csv)$/i;
+
+function buatErrorRamah(pesan) {
+  const err = new Error(pesan);
+  err.isFriendly = true;
+  err.friendlyMessage = pesan;
+  return err;
+}
+
+function validasiFileExcel(file) {
+  if (!file) {
+    throw buatErrorRamah('File belum dipilih. Silakan pilih file Excel terlebih dahulu.');
+  }
+  const namaFile = String(file.name || '').trim();
+  if (!FORMAT_EXCEL_RE.test(namaFile)) {
+    throw buatErrorRamah(
+      'Format file tidak didukung. Gunakan file dengan akhiran .xlsx, .xls, atau .csv saja.'
+    );
+  }
+  if (Number(file.size || 0) > MAX_EXCEL_SIZE_BYTES) {
+    throw buatErrorRamah(
+      'Ukuran file terlalu besar (lebih dari 5 MB). Kurangi isi atau ukuran file lalu unggah ulang.'
+    );
+  }
+}
+
+function bacaWorkbookAman(XLSX, buffer) {
+  try {
+    return XLSX.read(buffer, { type: 'array' });
+  } catch {
+    throw buatErrorRamah(
+      'File tidak dapat dibaca sebagai tabel Excel. Pastikan file tidak rusak dan tidak dikunci kata sandi.'
+    );
+  }
+}
+
+function tulisWorkbookAman(XLSX, wb, fileName) {
+  try {
+    XLSX.writeFile(wb, fileName);
+  } catch {
+    throw buatErrorRamah('Gagal membuat atau mengunduh file Excel. Silakan coba lagi.');
+  }
+}
+
 function pastikanSheetJS() {
   if (typeof window.XLSX === 'undefined') {
-    throw new Error(
+    throw buatErrorRamah(
       'Fitur Excel belum termuat sempurna. Periksa koneksi internet Anda lalu muat ulang halaman.'
     );
   }
   return window.XLSX;
 }
+
+const BULAN_SINGKAT = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'Mei',
+  'Jun',
+  'Jul',
+  'Agu',
+  'Sep',
+  'Okt',
+  'Nov',
+  'Des'
+];
 
 function bersihkanNamaFile(teks) {
   return String(teks || 'data')
@@ -19,6 +81,61 @@ function bersihkanNamaFile(teks) {
     .replace(/[^a-zA-Z0-9_-]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 60);
+}
+
+function formatTanggalCetakDefault() {
+  const now = new Date();
+  const bulanPanjang = [
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember'
+  ];
+  return `${now.getDate()} ${bulanPanjang[now.getMonth()] || ''} ${now.getFullYear()}`;
+}
+
+function formatKelasNamaFile(kelasRaw, kelasLabel) {
+  const raw = String(kelasRaw || '').trim();
+  if (raw) {
+    return `Kelas${bersihkanNamaFile(raw)}`;
+  }
+  const label = String(kelasLabel || '').trim();
+  if (label && !/semua/i.test(label)) {
+    const cleaned = label.replace(/^kelas\s*/i, '');
+    return `Kelas${bersihkanNamaFile(cleaned)}`;
+  }
+  return 'SemuaKelas';
+}
+
+function formatPeriodeAbsenNamaFile({ periodeMode, bulanRaw, tahunRaw, periodeLabel }) {
+  if (periodeMode === 'ganjil') {
+    return tahunRaw ? `Smt1_${bersihkanNamaFile(tahunRaw)}` : 'Smt1';
+  }
+  if (periodeMode === 'genap') {
+    return tahunRaw ? `Smt2_${bersihkanNamaFile(tahunRaw)}` : 'Smt2';
+  }
+  if (/^\d{4}-\d{2}$/.test(String(bulanRaw || ''))) {
+    const [yyyy, mm] = String(bulanRaw).split('-');
+    const singkatan = BULAN_SINGKAT[Number(mm) - 1] || mm;
+    return `${singkatan}${yyyy}`;
+  }
+  return bersihkanNamaFile(periodeLabel || 'Periode');
+}
+
+function formatSemesterNamaFile(semesterRaw, semesterLabel) {
+  const val = String(semesterRaw || semesterLabel || '').trim();
+  if (/ganjil/i.test(val)) return 'Smt1';
+  if (/genap/i.test(val)) return 'Smt2';
+  if (!val || /semua/i.test(val)) return 'SemuaSmt';
+  return bersihkanNamaFile(val);
 }
 
 function hitungLebarKolomOtomatis(sheetData, { headerRowIndex = 4, minWidth = 8, maxWidth = 42 } = {}) {
@@ -43,8 +160,19 @@ function hitungLebarKolomOtomatis(sheetData, { headerRowIndex = 4, minWidth = 8,
   return widths.map((w) => ({ wch: Math.min(maxWidth, Math.max(minWidth, w)) }));
 }
 
-export function exportRekapAbsenExcel({ rows, kelasLabel, periodeLabel, stats }) {
+export function exportRekapAbsenExcel({
+  rows,
+  kelasRaw = '',
+  kelasLabel,
+  periodeLabel,
+  periodeMode = 'bulan',
+  bulanRaw = '',
+  tahunRaw = '',
+  tanggalCetakLabel = '',
+  stats
+}) {
   const XLSX = pastikanSheetJS();
+  const tglCetak = tanggalCetakLabel || formatTanggalCetakDefault();
 
   const headerRow = [
     'No',
@@ -61,9 +189,9 @@ export function exportRekapAbsenExcel({ rows, kelasLabel, periodeLabel, stats })
   ];
 
   const sheetData = [
-    ['SMP MUHAMMADIYAH AL FURQAN'],
+    [APP_NAME],
     ['REKAP KEHADIRAN SISWA'],
-    [`Kelas: ${kelasLabel || 'Semua Kelas'} | Periode: ${periodeLabel || '-'}`],
+    [`Kelas: ${kelasLabel || 'Semua Kelas'} | Periode: ${periodeLabel || '-'} | Tanggal Cetak: ${tglCetak}`],
     [],
     headerRow
   ];
@@ -108,22 +236,33 @@ export function exportRekapAbsenExcel({ rows, kelasLabel, periodeLabel, stats })
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Rekap Absen');
 
-  const fileName = `Rekap_Absen_${bersihkanNamaFile(kelasLabel || 'Semua')}_${bersihkanNamaFile(
-    periodeLabel || 'Periode'
-  )}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+  const kelasPart = formatKelasNamaFile(kelasRaw, kelasLabel);
+  const periodePart = formatPeriodeAbsenNamaFile({
+    periodeMode,
+    bulanRaw,
+    tahunRaw,
+    periodeLabel
+  });
+  const fileName = `Rekap-Absen_${kelasPart}_${periodePart}.xlsx`;
+  tulisWorkbookAman(XLSX, wb, fileName);
   return fileName;
 }
 
 export function exportRekapNilaiExcel({
   rows,
+  kelasRaw = '',
   kelasLabel,
+  mapelRaw = '',
   mapelLabel,
+  semesterRaw = '',
   semesterLabel,
+  tanggalCetakLabel = '',
   kkm = 75,
   stats
 }) {
   const XLSX = pastikanSheetJS();
+  const tglCetak = tanggalCetakLabel || formatTanggalCetakDefault();
+  const periodeTeks = semesterRaw ? `Semester ${semesterRaw}` : semesterLabel || 'Semua Semester';
 
   const headerRow = [
     'Peringkat',
@@ -141,12 +280,12 @@ export function exportRekapNilaiExcel({
   ];
 
   const sheetData = [
-    ['SMP MUHAMMADIYAH AL FURQAN'],
+    [APP_NAME],
     ['REKAP NILAI SISWA'],
     [
-      `Kelas: ${kelasLabel || 'Semua Kelas'} | Mapel: ${mapelLabel || 'Semua Mapel'} | Semester: ${
-        semesterLabel || 'Semua Semester'
-      } | KKM: ${kkm}`
+      `Kelas: ${kelasLabel || 'Semua Kelas'} | Mapel: ${
+        mapelLabel || 'Semua Mapel'
+      } | Periode: ${periodeTeks} | KKM: ${kkm} | Tanggal Cetak: ${tglCetak}`
     ],
     [],
     headerRow
@@ -201,10 +340,11 @@ export function exportRekapNilaiExcel({
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Rekap Nilai');
 
-  const fileName = `Rekap_Nilai_${bersihkanNamaFile(kelasLabel || 'Semua')}_${bersihkanNamaFile(
-    mapelLabel || 'Semua'
-  )}_${bersihkanNamaFile(semesterLabel || 'Semua')}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+  const kelasPart = formatKelasNamaFile(kelasRaw, kelasLabel);
+  const mapelPart = bersihkanNamaFile(mapelRaw || (/semua/i.test(mapelLabel || '') ? 'SemuaMapel' : mapelLabel) || 'SemuaMapel');
+  const smtPart = formatSemesterNamaFile(semesterRaw, semesterLabel);
+  const fileName = `Rekap-Nilai_${kelasPart}_${mapelPart}_${smtPart}.xlsx`;
+  tulisWorkbookAman(XLSX, wb, fileName);
   return fileName;
 }
 
@@ -227,7 +367,7 @@ export function downloadTemplateSiswaExcel(daftarKelas = []) {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Data Siswa');
-  XLSX.writeFile(wb, 'Template_Data_Siswa_Al_Furqan.xlsx');
+  tulisWorkbookAman(XLSX, wb, `Template_Data_Siswa_${bersihkanNamaFile(APP_SHORT_NAME)}.xlsx`);
 }
 
 function cariKolom(row, kandidat) {
@@ -251,19 +391,22 @@ function normalisasiJk(raw) {
 
 export async function parseSiswaExcelFile(file, { kelasValidList = [], existingNisSet = new Set() } = {}) {
   const XLSX = pastikanSheetJS();
+  validasiFileExcel(file);
   const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: 'array' });
+  const workbook = bacaWorkbookAman(XLSX, buffer);
 
   const firstSheetName = workbook.SheetNames[0];
   if (!firstSheetName) {
-    throw new Error('File Excel terlihat kosong. Pastikan ada lembar kerja berisi daftar siswa.');
+    throw buatErrorRamah(
+      'File Excel terlihat kosong. Pastikan ada lembar kerja berisi daftar siswa.'
+    );
   }
 
   const sheet = workbook.Sheets[firstSheetName];
   const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
   if (!rawRows.length) {
-    throw new Error('Tidak ada baris data siswa yang ditemukan di dalam file Excel.');
+    throw buatErrorRamah('Tidak ada baris data siswa yang ditemukan di dalam file Excel.');
   }
 
   const kelasMap = new Map();
@@ -394,7 +537,7 @@ export function downloadTemplateNilaiExcel({
   const fileName = `Template_Nilai_${bersihkanNamaFile(kelasLabel)}_${bersihkanNamaFile(
     mapelLabel
   )}_${bersihkanNamaFile(semesterLabel)}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+  tulisWorkbookAman(XLSX, wb, fileName);
   return fileName;
 }
 
@@ -434,19 +577,22 @@ export async function parseNilaiExcelFile(
   { siswaKelasMap = new Map(), bobot = { tugas: 30, uts: 30, uas: 40 } } = {}
 ) {
   const XLSX = pastikanSheetJS();
+  validasiFileExcel(file);
   const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: 'array' });
+  const workbook = bacaWorkbookAman(XLSX, buffer);
 
   const firstSheetName = workbook.SheetNames[0];
   if (!firstSheetName) {
-    throw new Error('File Excel terlihat kosong. Pastikan ada lembar kerja berisi nilai siswa.');
+    throw buatErrorRamah(
+      'File Excel terlihat kosong. Pastikan ada lembar kerja berisi nilai siswa.'
+    );
   }
 
   const sheet = workbook.Sheets[firstSheetName];
   const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
   if (!rawRows.length) {
-    throw new Error('Tidak ada baris data nilai yang ditemukan di dalam file Excel.');
+    throw buatErrorRamah('Tidak ada baris data nilai yang ditemukan di dalam file Excel.');
   }
 
   const kemunculanNis = new Map();
@@ -651,6 +797,8 @@ export function exportBackupSemuaDataExcel({
 
   // 8. Pengaturan
   tambahSheet('Pengaturan', ['Pengaturan', 'Nilai'], [
+    ['Nama Aplikasi', APP_NAME],
+    ['Nama Sekolah', SEKOLAH],
     ['Bobot Tugas (%)', bobot?.tugas ?? 30],
     ['Bobot UTS (%)', bobot?.uts ?? 30],
     ['Bobot UAS (%)', bobot?.uas ?? 40],
@@ -658,7 +806,7 @@ export function exportBackupSemuaDataExcel({
   ]);
 
   const stempel = bersihkanNamaFile(tanggalHariIniStr || new Date().toISOString().slice(0, 10));
-  const fileName = `Cadangan_Data_Al_Furqan_${stempel}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+  const fileName = `Cadangan_Data_${bersihkanNamaFile(APP_SHORT_NAME)}_${stempel}.xlsx`;
+  tulisWorkbookAman(XLSX, wb, fileName);
   return fileName;
 }

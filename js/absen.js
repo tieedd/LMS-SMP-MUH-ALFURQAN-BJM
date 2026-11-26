@@ -13,8 +13,10 @@ import {
   getFirebaseServices,
   OperationType,
   handleFirestoreError,
+  pesanRamahError,
   buatIdAman
 } from './firebase.js';
+import { SEKOLAH } from './config.js';
 import {
   escapeHtml,
   tanggalHariIni,
@@ -23,6 +25,7 @@ import {
   getKelasYangDiizinkan,
   isAdmin,
   tampilkanSukses,
+  tampilkanSuksesBesar,
   tampilkanError,
   aturMenuAktif,
   isiDataContohSiswa,
@@ -158,8 +161,9 @@ function renderDaftarAbsen() {
       <div class="empty-state">
         <h2 class="empty-title">Belum Ada Kelas yang Diajar</h2>
         <p class="empty-desc">
-          Admin sekolah belum mengatur daftar kelas yang Anda ajar. Silakan hubungi Admin SMP
-          Muhammadiyah Al Furqan.
+          Admin sekolah belum mengatur daftar kelas yang Anda ajar. Silakan hubungi Admin ${escapeHtml(
+            SEKOLAH
+          )}.
         </p>
       </div>
     `;
@@ -388,7 +392,7 @@ export async function muatHalamanAbsen() {
     try {
       handleFirestoreError(error, OperationType.GET, `absensi/${absensiId}`);
     } catch (wrapped) {
-      tampilkanError(wrapped.friendlyMessage);
+      tampilkanError(pesanRamahError(wrapped));
     }
   }
 
@@ -564,14 +568,12 @@ async function simpanAbsen() {
     tandaiRekapPerluRefresh('absen');
     perbaruiBannerSudahAda(kelas, tanggal);
 
-    tampilkanSukses(
-      `Absen Kelas ${kelas} tanggal ${formatTanggalIndonesia(tanggal)} berhasil disimpan.`
-    );
+    tampilkanSuksesBesar('Berhasil disimpan ✓');
   } catch (error) {
     try {
       handleFirestoreError(error, OperationType.WRITE, `absensi/${absensiId}`);
     } catch (wrapped) {
-      tampilkanError(wrapped.friendlyMessage);
+      tampilkanError(pesanRamahError(wrapped));
     }
   } finally {
     if (btn) {

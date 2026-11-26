@@ -8,7 +8,13 @@ import {
   where,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
-import { getFirebaseServices, OperationType, handleFirestoreError } from './firebase.js';
+import {
+  getFirebaseServices,
+  OperationType,
+  handleFirestoreError,
+  pesanRamahError
+} from './firebase.js';
+import { APP_NAME } from './config.js';
 import {
   escapeHtml,
   bulanIni,
@@ -134,7 +140,7 @@ async function simpanKkmSekolah() {
     try {
       handleFirestoreError(error, OperationType.WRITE, 'pengaturan/kkm');
     } catch (wrapped) {
-      tampilkanError(wrapped.friendlyMessage);
+      tampilkanError(pesanRamahError(wrapped));
     }
   } finally {
     if (btn) {
@@ -308,7 +314,7 @@ async function muatDataRekapAbsen(paksaMuatUlang = false) {
     try {
       handleFirestoreError(error, OperationType.LIST, 'rekapAbsen');
     } catch (wrapped) {
-      tampilkanError(wrapped.friendlyMessage);
+      tampilkanError(pesanRamahError(wrapped));
     }
   }
 
@@ -476,12 +482,12 @@ function renderRekapAbsen() {
 
   if (printHeaderEl) {
     printHeaderEl.innerHTML = `
-      <p class="print-school">SMP Muhammadiyah Al Furqan</p>
+      <p class="print-school">${escapeHtml(APP_NAME)}</p>
       <p class="print-title">LAPORAN REKAP KEHADIRAN SISWA</p>
       <p class="print-meta">
         Kelas: ${kelas ? `Kelas ${escapeHtml(kelas)}` : 'Semua Kelas'} &nbsp;|&nbsp;
         Periode: ${escapeHtml(periodeLabel)} &nbsp;|&nbsp;
-        Dicetak: ${escapeHtml(formatTanggalIndonesia(tanggalHariIni()))}
+        Tanggal Cetak: ${escapeHtml(formatTanggalIndonesia(tanggalHariIni()))}
       </p>
       <p class="print-meta">
         Rata-rata Kehadiran: ${
@@ -706,7 +712,7 @@ async function muatDataRekapNilai(paksaMuatUlang = false) {
     try {
       handleFirestoreError(error, OperationType.LIST, 'nilai');
     } catch (wrapped) {
-      tampilkanError(wrapped.friendlyMessage);
+      tampilkanError(pesanRamahError(wrapped));
     }
   }
 
@@ -915,20 +921,20 @@ function renderRekapNilai() {
 
   if (printHeaderEl) {
     printHeaderEl.innerHTML = `
-      <p class="print-school">SMP Muhammadiyah Al Furqan</p>
+      <p class="print-school">${escapeHtml(APP_NAME)}</p>
       <p class="print-title">LAPORAN REKAP NILAI SISWA</p>
       <p class="print-meta">
         Kelas: ${kelas ? `Kelas ${escapeHtml(kelas)}` : 'Semua Kelas'} &nbsp;|&nbsp;
         Mapel: ${escapeHtml(mapel || 'Semua Mata Pelajaran')} &nbsp;|&nbsp;
-        Semester: ${escapeHtml(semester || 'Semua Semester')} &nbsp;|&nbsp;
-        KKM: ${kkm}
+        Periode: ${escapeHtml(semester ? `Semester ${semester}` : 'Semua Semester')} &nbsp;|&nbsp;
+        KKM: ${kkm} &nbsp;|&nbsp;
+        Tanggal Cetak: ${escapeHtml(formatTanggalIndonesia(tanggalHariIni()))}
       </p>
       <p class="print-meta">
         Rata-rata: ${stats.rataRata !== null ? stats.rataRata : '-'} &nbsp;|&nbsp;
         Tertinggi: ${stats.tertinggi !== null ? stats.tertinggi : '-'} &nbsp;|&nbsp;
         Terendah: ${stats.terendah !== null ? stats.terendah : '-'} &nbsp;|&nbsp;
-        Di Bawah KKM: ${stats.jumlahDiBawahKkm} siswa &nbsp;|&nbsp;
-        Dicetak: ${escapeHtml(formatTanggalIndonesia(tanggalHariIni()))}
+        Di Bawah KKM: ${stats.jumlahDiBawahKkm} siswa
       </p>
     `;
   }
@@ -1134,16 +1140,25 @@ export function initHalamanRekap() {
         return;
       }
       const kelas = document.getElementById('rekap-absen-kelas')?.value || '';
+      const mode = document.getElementById('rekap-absen-periode')?.value || 'bulan';
+      const bulan = document.getElementById('rekap-absen-bulan')?.value || bulanIni();
+      const tahun =
+        document.getElementById('rekap-absen-tahun')?.value || String(new Date().getFullYear());
       const { label: periodeLabel } = getPeriodeAbsenTerpilih();
       const fileName = exportRekapAbsenExcel({
         rows,
+        kelasRaw: kelas,
         kelasLabel: kelas ? `Kelas ${kelas}` : 'Semua Kelas',
         periodeLabel,
+        periodeMode: mode,
+        bulanRaw: bulan,
+        tahunRaw: tahun,
+        tanggalCetakLabel: formatTanggalIndonesia(tanggalHariIni()),
         stats
       });
       tampilkanSukses(`File Excel "${fileName}" berhasil diunduh.`);
     } catch (err) {
-      tampilkanError(err.message);
+      tampilkanError(pesanRamahError(err));
     }
   });
 
@@ -1170,15 +1185,19 @@ export function initHalamanRekap() {
       const semester = document.getElementById('rekap-nilai-semester')?.value || '';
       const fileName = exportRekapNilaiExcel({
         rows,
+        kelasRaw: kelas,
         kelasLabel: kelas ? `Kelas ${kelas}` : 'Semua Kelas',
+        mapelRaw: mapel,
         mapelLabel: mapel || 'Semua Mata Pelajaran',
+        semesterRaw: semester,
         semesterLabel: semester || 'Semua Semester',
+        tanggalCetakLabel: formatTanggalIndonesia(tanggalHariIni()),
         kkm,
         stats
       });
       tampilkanSukses(`File Excel "${fileName}" berhasil diunduh.`);
     } catch (err) {
-      tampilkanError(err.message);
+      tampilkanError(pesanRamahError(err));
     }
   });
 

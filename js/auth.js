@@ -14,6 +14,7 @@ import {
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { initFirebase, getFirebaseServices, pesanRamahError } from './firebase.js';
+import { APP_NAME, APP_SHORT_NAME, SEKOLAH } from './config.js';
 import {
   initNavigasi,
   aturMenuAktif,
@@ -34,7 +35,6 @@ import { initHalamanAbsen, muatHalamanAbsen } from './absen.js';
 import { initHalamanNilai, muatHalamanNilai } from './nilai.js';
 import { initHalamanRekap, muatHalamanRekap } from './rekap.js';
 
-const INITIAL_ADMIN_EMAIL = 'darry.hafidh20@admin.sd.belajar.id';
 let halamanSudahDiinit = false;
 
 function tampilkanLayar(idLayar) {
@@ -126,22 +126,24 @@ async function muatAtauSiapkanProfil(user) {
   const userRef = doc(db, 'users', user.uid);
   const snap = await getDoc(userRef);
 
-  const isBootstrappedAdmin =
-    String(user.email || '').toLowerCase() === INITIAL_ADMIN_EMAIL.toLowerCase();
-
   if (snap.exists()) {
     const data = snap.data();
-    // Lengkapi field jika dokumen lama belum punya format peran baru
-    if (
-      isBootstrappedAdmin &&
-      (!Array.isArray(data.kelasDiampu) ||
-        !Array.isArray(data.mapelDiampu) ||
-        typeof data.aktif !== 'boolean')
-    ) {
+    const profilLengkap =
+      Array.isArray(data.kelasDiampu) &&
+      Array.isArray(data.mapelDiampu) &&
+      typeof data.aktif === 'boolean';
+
+    if (profilLengkap) {
+      return { id: snap.id, ...data };
+    }
+
+    // Lengkapi field bila dokumen admin lama belum memakai format baru
+    const adminSnap = await getDoc(doc(db, 'admins', user.uid));
+    if (adminSnap.exists()) {
       const upgraded = {
         uid: user.uid,
-        nama: data.nama || user.displayName || 'Admin Sekolah',
-        email: data.email || user.email || '',
+        nama: (data.nama || user.displayName || `Admin ${SEKOLAH}`).trim().slice(0, 100),
+        email: (data.email || user.email || '').trim().slice(0, 150),
         role: 'admin',
         kelasDiampu: Array.isArray(data.kelasDiampu) ? data.kelasDiampu : [],
         mapelDiampu: Array.isArray(data.mapelDiampu) ? data.mapelDiampu : [],
@@ -153,13 +155,16 @@ async function muatAtauSiapkanProfil(user) {
       await setDoc(userRef, upgraded);
       return upgraded;
     }
+
     return { id: snap.id, ...data };
   }
 
-  if (isBootstrappedAdmin) {
+  // Admin pertama ditentukan lewat dokumen admins/{uid} di Firestore
+  const adminSnap = await getDoc(doc(db, 'admins', user.uid));
+  if (adminSnap.exists()) {
     const adminProfile = {
       uid: user.uid,
-      nama: (user.displayName || 'Admin SMP Muhammadiyah Al Furqan').trim().slice(0, 100),
+      nama: (user.displayName || `Admin ${SEKOLAH}`).trim().slice(0, 100),
       email: (user.email || '').trim().slice(0, 150),
       role: 'admin',
       kelasDiampu: [],
@@ -252,7 +257,7 @@ function pasangEventLogin() {
       window.location.reload();
     } else {
       tampilkanError(
-        'Email Anda masih belum terverifikasi. Mohon klik link verifikasi di email terlebih dahulu.'
+        'Email Anda belum diverifikasi. Buka email Anda lalu klik tautan verifikasi.'
       );
     }
   });
@@ -306,6 +311,15 @@ function inisialisasiSekali() {
 }
 
 async function mulaiAplikasi() {
+  document.title = APP_NAME;
+  document.querySelectorAll('.brand-title').forEach((el) => {
+    el.textContent = APP_NAME;
+  });
+  const sidebarSchoolEl = document.querySelector('.sidebar-school');
+  if (sidebarSchoolEl) sidebarSchoolEl.textContent = APP_NAME;
+  const sidebarSubEl = document.querySelector('.sidebar-sub');
+  if (sidebarSubEl) sidebarSubEl.textContent = APP_SHORT_NAME;
+
   document.getElementById('btn-coba-ulang-config')?.addEventListener('click', () => {
     window.location.reload();
   });
@@ -353,7 +367,7 @@ async function mulaiAplikasi() {
     if (!profile) {
       setProfilPengguna(null);
       if (noProfileText) {
-        noProfileText.textContent = `Akun ${user.email} belum didaftarkan oleh Admin SMP Muhammadiyah Al Furqan. Hubungi Admin sekolah untuk mengaktifkan akun Anda (kode akun: ${user.uid}).`;
+        noProfileText.textContent = `Akun ${user.email} belum didaftarkan oleh Admin ${APP_NAME}. Hubungi Admin ${SEKOLAH} untuk mengaktifkan akun Anda (kode akun: ${user.uid}).`;
       }
       if (noProfileBox) noProfileBox.hidden = false;
       tampilkanLayar('login-screen');
@@ -363,7 +377,7 @@ async function mulaiAplikasi() {
     if (profile.aktif === false) {
       setProfilPengguna(null);
       if (noProfileText) {
-        noProfileText.textContent = `Akun ${user.email} sedang dinonaktifkan oleh Admin sekolah. Silakan hubungi Admin SMP Muhammadiyah Al Furqan.`;
+        noProfileText.textContent = `Akun ${user.email} sedang dinonaktifkan oleh Admin ${SEKOLAH}. Silakan hubungi Admin ${APP_NAME}.`;
       }
       if (noProfileBox) noProfileBox.hidden = false;
       tampilkanLayar('login-screen');
@@ -383,7 +397,7 @@ async function mulaiAplikasi() {
     if (nameEl) nameEl.textContent = profile.nama || user.displayName || 'Guru';
     if (roleEl) roleEl.textContent = peranLabel;
     if (emailEl) emailEl.textContent = profile.email || user.email || '';
-    if (mobileRoleEl) mobileRoleEl.textContent = `${peranLabel} · Al Furqan`;
+    if (mobileRoleEl) mobileRoleEl.textContent = `${peranLabel} · ${APP_SHORT_NAME}`;
 
     tampilkanLayar('app-shell');
     inisialisasiSekali();

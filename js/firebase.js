@@ -137,6 +137,13 @@ export async function buatAkunAuthOlehAdmin(email, password) {
 }
 
 export function pesanRamahError(error) {
+  if (typeof error?.friendlyMessage === 'string' && error.friendlyMessage.trim()) {
+    return error.friendlyMessage;
+  }
+  if (error?.isFriendly === true && typeof error?.message === 'string' && error.message.trim()) {
+    return error.message;
+  }
+
   const code = error?.code || '';
   const msg = error?.message || String(error || '');
 
@@ -167,6 +174,12 @@ export function pesanRamahError(error) {
   }
   if (code === 'auth/operation-not-allowed') {
     return 'Cara masuk dengan email belum diaktifkan oleh Admin sekolah. Silakan hubungi Admin atau masuk dengan Google.';
+  }
+  if (code === 'auth/expired-action-code' || code === 'auth/invalid-action-code') {
+    return 'Tautan verifikasi atau atur ulang kata sandi sudah kedaluwarsa. Silakan minta kirim ulang.';
+  }
+  if (code === 'auth/requires-recent-login') {
+    return 'Untuk keamanan, silakan keluar lalu masuk kembali terlebih dahulu.';
   }
   if (code === 'auth/network-request-failed' || msg.includes('offline')) {
     return 'Koneksi internet sedang terputus. Periksa Wi-Fi atau paket data Anda, lalu coba lagi.';

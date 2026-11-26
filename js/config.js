@@ -1,0 +1,3 @@
+export const APP_NAME = 'LMS SMP MUHAMMADIYAH AL FURQAN';
+export const APP_SHORT_NAME = 'LMS Al Furqan';
+export const SEKOLAH = 'SMP MUHAMMADIYAH AL FURQAN';

@@ -20,6 +20,7 @@ import {
   pesanRamahError,
   buatIdAman
 } from './firebase.js';
+import { APP_NAME, APP_SHORT_NAME, SEKOLAH } from './config.js';
 import {
   downloadTemplateSiswaExcel,
   parseSiswaExcelFile,
@@ -43,11 +44,11 @@ const menuChangeCallbacks = [];
 const rekapPerluRefresh = { absen: true, nilai: true };
 
 const JUDUL_HALAMAN_HP = {
-  absen: 'Absen Siswa',
-  nilai: 'Input Nilai',
-  rekap: 'Rekap & Excel',
-  siswa: 'Data Siswa',
-  panduan: 'Panduan Guru'
+  absen: `${APP_SHORT_NAME} · Absen Siswa`,
+  nilai: `${APP_SHORT_NAME} · Input Nilai`,
+  rekap: `${APP_SHORT_NAME} · Rekap & Excel`,
+  siswa: `${APP_SHORT_NAME} · Data Siswa`,
+  panduan: `${APP_SHORT_NAME} · Panduan Guru`
 };
 
 export function tandaiRekapPerluRefresh(jenis = 'semua') {
@@ -212,12 +213,12 @@ export function formatBulanIndonesia(yyyyMm) {
 // Notifikasi Ramah (Toast) & Dialog Konfirmasi
 // ==========================================================================
 
-function buatToast(pesan, tipe) {
+function buatToast(pesan, tipe, { large = false, duration = 4500 } = {}) {
   const container = document.getElementById('toast-container');
   if (!container) return;
 
   const toast = document.createElement('div');
-  toast.className = `toast toast--${tipe}`;
+  toast.className = `toast toast--${tipe}${large ? ' toast--large' : ''}`;
 
   const textSpan = document.createElement('span');
   textSpan.textContent = pesan;
@@ -235,11 +236,15 @@ function buatToast(pesan, tipe) {
 
   window.setTimeout(() => {
     if (toast.isConnected) toast.remove();
-  }, 4500);
+  }, duration);
 }
 
 export function tampilkanSukses(pesan) {
   buatToast(pesan, 'success');
+}
+
+export function tampilkanSuksesBesar(pesan) {
+  buatToast(pesan, 'success', { large: true, duration: 5500 });
 }
 
 export function tampilkanError(pesan) {
@@ -407,7 +412,7 @@ export function aturMenuAktif(menu) {
 
   const mobileTitle = document.getElementById('mobile-page-title');
   if (mobileTitle) {
-    mobileTitle.textContent = JUDUL_HALAMAN_HP[menu] || 'SMP Muhammadiyah Al Furqan';
+    mobileTitle.textContent = JUDUL_HALAMAN_HP[menu] || APP_NAME;
   }
 
   menuChangeCallbacks.forEach((cb) => cb(menu));
@@ -1122,8 +1127,8 @@ export function renderHalamanSiswa() {
         <p class="empty-desc">
           ${
             isWaliKelas()
-              ? 'Kelas perwalian Anda belum diatur. Silakan hubungi Admin SMP Muhammadiyah Al Furqan.'
-              : 'Anda belum ditugaskan ke kelas mana pun. Silakan hubungi Admin SMP Muhammadiyah Al Furqan.'
+              ? `Kelas perwalian Anda belum diatur. Silakan hubungi Admin ${escapeHtml(SEKOLAH)}.`
+              : `Anda belum ditugaskan ke kelas mana pun. Silakan hubungi Admin ${escapeHtml(SEKOLAH)}.`
           }
         </p>
       </div>
@@ -1874,7 +1879,7 @@ function bukaFormAkun(akunEdit = null) {
               type="text"
               id="modal-akun-password"
               class="form-input"
-              placeholder="Contoh: AlFurqan2026"
+              placeholder="Contoh: LmsAlFurqan2026"
               minlength="6"
               required
             />
@@ -2337,7 +2342,7 @@ export function initHalamanSiswa() {
       downloadTemplateSiswaExcel(getDaftarKelas());
       tampilkanSukses('Template Excel siswa berhasil diunduh. Silakan buka dan isi di Excel.');
     } catch (err) {
-      tampilkanError(err.message);
+      tampilkanError(pesanRamahError(err));
     }
   });
 
@@ -2369,7 +2374,7 @@ export function initHalamanSiswa() {
       };
       renderPratinjauImport();
     } catch (error) {
-      tampilkanError(error?.message || 'Gagal membaca file Excel.');
+      tampilkanError(pesanRamahError(error));
     }
   });
 }

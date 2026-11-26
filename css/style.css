@@ -122,6 +122,19 @@ a:focus-visible {
   font-size: 17px;
 }
 
+.btn-google-main {
+  min-height: 58px;
+  padding: 15px 26px;
+  font-size: 18px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(15, 107, 70, 0.24);
+}
+
+.btn-google-main .btn-icon {
+  width: 24px;
+  height: 24px;
+}
+
 .btn-sm {
   min-height: 42px;
   padding: 8px 14px;
@@ -945,6 +958,15 @@ a:focus-visible {
   background-color: #ecfdf5;
   border-color: #a7f3d0;
   color: #065f46;
+}
+
+.toast--large {
+  padding: 18px 22px;
+  font-size: 19px;
+  font-weight: 700;
+  border-width: 2px;
+  border-color: #10b981;
+  box-shadow: 0 12px 32px rgba(6, 95, 70, 0.2);
 }
 
 .toast--error {

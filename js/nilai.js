@@ -13,8 +13,10 @@ import {
   getFirebaseServices,
   OperationType,
   handleFirestoreError,
+  pesanRamahError,
   buatIdAman
 } from './firebase.js';
+import { SEKOLAH } from './config.js';
 import {
   DAFTAR_MAPEL_STANDAR,
   escapeHtml,
@@ -24,6 +26,7 @@ import {
   getMapelYangDiizinkan,
   isAdmin,
   tampilkanSukses,
+  tampilkanSuksesBesar,
   tampilkanError,
   tampilkanInfo,
   aturMenuAktif,
@@ -226,7 +229,7 @@ function bukaModalBobotNilai() {
       try {
         handleFirestoreError(error, OperationType.WRITE, 'pengaturan/bobotNilai');
       } catch (wrapped) {
-        tampilkanError(wrapped.friendlyMessage);
+        tampilkanError(pesanRamahError(wrapped));
       }
     }
   });
@@ -379,7 +382,7 @@ function renderInputNilai() {
         <h2 class="empty-title">Kelas atau Mata Pelajaran Belum Diatur</h2>
         <p class="empty-desc">
           Admin sekolah belum mengatur kelas yang diajar atau mata pelajaran yang Anda ampu. Silakan
-          hubungi Admin SMP Muhammadiyah Al Furqan.
+          hubungi Admin ${escapeHtml(SEKOLAH)}.
         </p>
       </div>
     `;
@@ -830,8 +833,7 @@ async function simpanHasilImportNilaiBatch() {
     }
 
     perbaruiCacheNilaiSetelahSimpan(kelas, mapel, semester, validRows);
-    const lewat = invalidRows.length > 0 ? ` (${invalidRows.length} baris bermasalah dilewati.)` : '';
-    tampilkanSukses(`${validRows.length} nilai ${mapel} kelas ${kelas} berhasil disimpan.${lewat}`);
+    tampilkanSuksesBesar('Berhasil disimpan ✓');
     tutupPratinjauImportNilai();
     isiDraftDariFilterSaatIni();
   } catch (error) {
@@ -842,7 +844,7 @@ async function simpanHasilImportNilaiBatch() {
     try {
       handleFirestoreError(error, OperationType.WRITE, 'nilai');
     } catch (wrapped) {
-      tampilkanError(wrapped.friendlyMessage);
+      tampilkanError(pesanRamahError(wrapped));
     }
   }
 }
@@ -890,7 +892,7 @@ async function muatNilaiUntukFilterSaatIni(paksaMuatUlang = false) {
     try {
       handleFirestoreError(error, OperationType.LIST, 'nilai');
     } catch (wrapped) {
-      tampilkanError(wrapped.friendlyMessage);
+      tampilkanError(pesanRamahError(wrapped));
     }
   }
 
@@ -1031,15 +1033,13 @@ async function simpanSemuaNilai() {
       }))
     );
 
-    tampilkanSukses(
-      `Nilai ${mapel} (Semester ${semester}) untuk ${dataUntukSimpan.length} siswa kelas ${kelas} berhasil disimpan.`
-    );
+    tampilkanSuksesBesar('Berhasil disimpan ✓');
     isiDraftDariFilterSaatIni();
   } catch (error) {
     try {
       handleFirestoreError(error, OperationType.WRITE, 'nilai');
     } catch (wrapped) {
-      tampilkanError(wrapped.friendlyMessage);
+      tampilkanError(pesanRamahError(wrapped));
     }
   } finally {
     if (btn) {
@@ -1074,7 +1074,7 @@ export function initHalamanNilai() {
       });
       tampilkanSukses(`Template nilai "${fileName}" berhasil diunduh.`);
     } catch (err) {
-      tampilkanError(err.message);
+      tampilkanError(pesanRamahError(err));
     }
   });
 
@@ -1112,7 +1112,7 @@ export function initHalamanNilai() {
       };
       renderPratinjauImportNilai();
     } catch (error) {
-      tampilkanError(error?.message || 'Gagal membaca file Excel nilai.');
+      tampilkanError(pesanRamahError(error));
     }
   });
 }

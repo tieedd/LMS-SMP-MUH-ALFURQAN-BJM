@@ -1,6 +1,0 @@
-{
-  "name": "Rekap Nilai & Absen SMP Muhammadiyah Al Furqan",
-  "description": "Aplikasi web statis untuk mencatat absensi harian, menginput nilai siswa, melihat rekap kehadiran dan nilai, serta ekspor dan impor Excel untuk guru SMP Muhammadiyah Al Furqan.",
-  "requestFramePermissions": [],
-  "majorCapabilities": []
-}

@@ -1,7 +1,7 @@
-# Security Specification — Rekap Nilai & Absen SMP Muhammadiyah Al Furqan
+# Security Specification — LMS SMP MUHAMMADIYAH AL FURQAN
 
 ## 1. Data Invariants
-1. `users/{userId}`: Only verified `admin` users can create, update, or delete role profiles (`admin`, `guru`, `wali_kelas`); non-admins can only read their own profile.
+1. `admins/{uid}` & `users/{userId}`: Admin status is determined strictly by an existing `admins/{uid}` document or an active `users/{uid}` profile with `role == 'admin'` (never by hardcoded emails). Only verified `admin` users can create, update, or delete role profiles (`admin`, `guru`, `wali_kelas`); non-admins can only read their own profile.
 2. `kelas/{kelasId}` & `mapel/{mapelId}`: Managed strictly by `admin`. Teachers and homeroom teachers may only read classes/subjects scoped to their role.
 3. `siswa/{nis}`: Document ID equals valid `nis` (`^[a-zA-Z0-9_-]+$`), stores `nama`, `kelas` (must reference an existing `kelas/{kelas}`), and `jk` (`'L' | 'P'`). Managed strictly by `admin`; read-only for assigned `guru` and `wali_kelas`.
 4. `absensi/{kelasId_tanggal}`: Document ID must equal `incoming().kelas + '_' + incoming().tanggal`; stores `tanggal`, `kelas`, and `records` map (`<= 100` entries). Writable by `admin` or active `guru` for `kelas in myProfile().kelasDiampu`; read-only for `wali_kelas`.

@@ -1,15 +1,15 @@
 // ============================================================================
-// CONTOH KONFIGURASI FIREBASE
+// KONFIGURASI FIREBASE — LMS SMP MUHAMMADIYAH AL FURQAN
 // ============================================================================
-// Petunjuk Pengisian:
-// 1. Salin (copy) file ini dan ubah namanya menjadi: firebase-config.js
-//    (Pastikan berada di folder utama yang sama dengan index.html)
-// 2. Buka Firebase Console (https://console.firebase.google.com/)
-// 3. Pilih project sekolah Anda, lalu klik ikon roda gigi (Project Settings)
-// 4. Di bagian bawah "Your apps", pilih Web App (ikon </>) dan salin nilainya
-//    ke dalam tanda kutip di bawah ini.
-// 5. Jangan bagikan file firebase-config.js jika repository GitHub bersifat publik,
-//    atau pastikan Firestore Security Rules sudah aktif dengan benar.
+// Catatan Keamanan Penting:
+// 1. Nilai di bawah ini (apiKey, authDomain, projectId, dll.) adalah kunci
+//    klien Web Firebase yang memang dirancang bersifat PUBLIK agar aplikasi
+//    web statis dapat terhubung ke Firebase dari browser.
+// 2. Keamanan data sekolah TIDAK bergantung pada kerahasiaan file ini,
+//    melainkan dijaga sepenuhnya oleh Firestore Security Rules (aturan akses
+//    berbasis peran admin, guru, wali_kelas) dan verifikasi akun Firebase Auth.
+// 3. Jika ingin mengganti ke project Firebase lain, salin konfigurasi Web App
+//    dari Firebase Console > Project Settings > Your apps ke bagian di bawah ini.
 // ============================================================================
 
 const firebaseConfig = {

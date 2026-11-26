@@ -3,19 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Rekap Nilai &amp; Absen — SMP Muhammadiyah Al Furqan</title>
+    <title>LMS SMP MUHAMMADIYAH AL FURQAN</title>
     <meta
       name="description"
-      content="Aplikasi web statis untuk mencatat absensi harian, menginput nilai siswa, melihat rekap kehadiran dan nilai, serta ekspor dan impor Excel untuk guru SMP Muhammadiyah Al Furqan."
+      content="LMS SMP MUHAMMADIYAH AL FURQAN — Aplikasi web statis untuk mencatat absensi harian, menginput nilai siswa, melihat rekap kehadiran dan nilai, serta ekspor dan impor Excel."
     />
-    <meta property="og:title" content="Rekap Nilai &amp; Absen — SMP Muhammadiyah Al Furqan" />
+    <meta property="og:title" content="LMS SMP MUHAMMADIYAH AL FURQAN" />
     <meta
       property="og:description"
-      content="Aplikasi sederhana untuk guru SMP Muhammadiyah Al Furqan mencatat absen harian, nilai siswa, dan rekap Excel."
+      content="LMS SMP MUHAMMADIYAH AL FURQAN — Aplikasi sederhana untuk guru mencatat absen harian, nilai siswa, dan rekap Excel."
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#0F6B46" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="LMS Al Furqan" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
 
     <!-- Font Plus Jakarta Sans agar tulisan jelas dan nyaman dibaca -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -54,7 +61,7 @@
             </svg>
           </div>
           <div>
-            <h1 class="brand-title">SMP Muhammadiyah Al Furqan</h1>
+            <h1 class="brand-title">LMS SMP MUHAMMADIYAH AL FURQAN</h1>
             <p class="brand-subtitle">Pengaturan Awal Database</p>
           </div>
         </div>
@@ -83,28 +90,27 @@
             </svg>
           </div>
           <div>
-            <h1 class="brand-title">SMP Muhammadiyah Al Furqan</h1>
+            <h1 class="brand-title">LMS SMP MUHAMMADIYAH AL FURQAN</h1>
             <p class="brand-subtitle">Aplikasi Rekap Nilai &amp; Absen</p>
           </div>
         </div>
 
         <p class="login-intro">
-          Masukkan email dan kata sandi akun sekolah Anda untuk mulai mencatat absen, mengisi
-          nilai, atau melihat rekap kelas.
+          Pilih tombol utama <strong>Masuk dengan Akun Google</strong> di bawah ini, atau masuk
+          memakai email dan kata sandi sekolah Anda.
         </p>
 
         <div id="login-error-box" class="alert-banner alert-banner--error" hidden></div>
 
         <div id="verify-email-box" class="alert-banner alert-banner--warning" hidden>
           <p id="verify-email-text">
-            Email Anda belum diverifikasi. Silakan buka kotak masuk email Anda dan klik tautan
-            verifikasi, lalu tekan tombol di bawah.
+            Email Anda belum diverifikasi. Buka email Anda lalu klik tautan verifikasi
           </p>
           <div class="alert-actions">
-            <button type="button" id="btn-kirim-verifikasi" class="btn btn-secondary btn-sm">
-              Kirim Ulang Email Verifikasi
+            <button type="button" id="btn-kirim-verifikasi" class="btn btn-primary btn-sm">
+              Kirim ulang email verifikasi
             </button>
-            <button type="button" id="btn-cek-verifikasi" class="btn btn-primary btn-sm">
+            <button type="button" id="btn-cek-verifikasi" class="btn btn-secondary btn-sm">
               Saya Sudah Verifikasi
             </button>
             <button type="button" id="btn-keluar-verifikasi" class="btn btn-ghost btn-sm">
@@ -122,6 +128,20 @@
               Keluar &amp; Ganti Akun
             </button>
           </div>
+        </div>
+
+        <button type="button" id="btn-login-google" class="btn btn-primary btn-full btn-lg btn-google-main">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"
+            />
+          </svg>
+          <span>Masuk dengan Akun Google</span>
+        </button>
+
+        <div class="divider-text">
+          <span>atau masuk dengan email dan kata sandi</span>
         </div>
 
         <form id="form-login-email" class="email-form" style="margin-top: 0">
@@ -149,7 +169,7 @@
             />
           </div>
           <div class="email-form-actions">
-            <button type="submit" id="btn-submit-email-login" class="btn btn-primary btn-full btn-lg">
+            <button type="submit" id="btn-submit-email-login" class="btn btn-secondary btn-full">
               Masuk
             </button>
             <button type="button" id="btn-lupa-sandi" class="btn btn-ghost btn-full">
@@ -158,22 +178,8 @@
           </div>
         </form>
 
-        <div class="divider-text">
-          <span>atau masuk dengan Google</span>
-        </div>
-
-        <button type="button" id="btn-login-google" class="btn btn-secondary btn-full">
-          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"
-            />
-          </svg>
-          <span>Masuk dengan Akun Google</span>
-        </button>
-
         <p class="login-footnote">
-          Belum punya akun? Silakan minta Admin SMP Muhammadiyah Al Furqan untuk membuatkan akun
+          Belum punya akun? Silakan minta Admin LMS SMP MUHAMMADIYAH AL FURQAN untuk membuatkan akun
           guru atau wali kelas Anda.
         </p>
       </div>
@@ -192,8 +198,8 @@
             </svg>
           </div>
           <div class="sidebar-brand-text">
-            <span class="sidebar-school">SMP Muhammadiyah</span>
-            <span class="sidebar-sub">Al Furqan</span>
+            <span class="sidebar-school">LMS SMP MUHAMMADIYAH AL FURQAN</span>
+            <span class="sidebar-sub">LMS Al Furqan</span>
           </div>
         </div>
 
@@ -257,8 +263,8 @@
         <!-- Header Ringkas Khusus HP -->
         <header class="mobile-topbar">
           <div class="mobile-topbar-title">
-            <span class="mobile-school-name" id="mobile-role-label">SMP Muhammadiyah Al Furqan</span>
-            <h2 class="mobile-page-name" id="mobile-page-title">Absen Siswa</h2>
+            <span class="mobile-school-name" id="mobile-role-label">LMS SMP MUHAMMADIYAH AL FURQAN</span>
+            <h2 class="mobile-page-name" id="mobile-page-title">LMS SMP MUHAMMADIYAH AL FURQAN</h2>
           </div>
           <div class="mobile-topbar-actions">
             <button type="button" id="btn-panduan-mobile" data-menu="panduan" class="btn btn-ghost btn-sm">
@@ -690,7 +696,7 @@
                 <h1 id="judul-panduan" class="page-title">Panduan Penggunaan untuk Guru</h1>
                 <p class="page-desc">
                   Ikuti 5 langkah mudah berikut untuk mencatat kehadiran, mengisi nilai, dan melihat
-                  rekap kelas di SMP Muhammadiyah Al Furqan.
+                  rekap kelas di LMS SMP MUHAMMADIYAH AL FURQAN.
                 </p>
               </div>
             </div>

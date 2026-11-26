@@ -45,7 +45,6 @@ service cloud.firestore {
 
     function isAdmin() {
       return isVerifiedUser() && (
-        request.auth.token.email == 'darry.hafidh20@admin.sd.belajar.id' ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         (hasActiveProfile() && myProfile().role == 'admin')
       );
