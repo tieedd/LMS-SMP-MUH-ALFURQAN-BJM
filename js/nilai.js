@@ -25,6 +25,7 @@ import {
   getKelasYangDiizinkan,
   getMapelYangDiizinkan,
   isAdmin,
+  isGuru,
   tampilkanSukses,
   tampilkanSuksesBesar,
   tampilkanError,
@@ -850,6 +851,14 @@ async function simpanHasilImportNilaiBatch() {
 }
 
 async function muatNilaiUntukFilterSaatIni(paksaMuatUlang = false) {
+  const adminMode = isAdmin();
+  const guruMode = isGuru();
+  if (!adminMode && !guruMode) {
+    semuaNilaiCache = [];
+    isiDraftDariFilterSaatIni();
+    return;
+  }
+
   const kelasDiizinkan = getKelasYangDiizinkan();
   const mapelDiizinkan = getMapelYangDiizinkan();
   const kelas = document.getElementById('nilai-kelas')?.value || '';
@@ -859,7 +868,10 @@ async function muatNilaiUntukFilterSaatIni(paksaMuatUlang = false) {
     (Array.isArray(kelasDiizinkan) && kelasDiizinkan.length === 0) ||
     (Array.isArray(mapelDiizinkan) && mapelDiizinkan.length === 0) ||
     !kelas ||
-    (!isAdmin() && !mapel)
+    (!adminMode && !mapel) ||
+    (guruMode &&
+      ((Array.isArray(kelasDiizinkan) && !kelasDiizinkan.includes(kelas)) ||
+        (Array.isArray(mapelDiizinkan) && !mapelDiizinkan.includes(mapel))))
   ) {
     semuaNilaiCache = [];
     isiDraftDariFilterSaatIni();
@@ -877,7 +889,7 @@ async function muatNilaiUntukFilterSaatIni(paksaMuatUlang = false) {
 
   try {
     const items = [];
-    const q = isAdmin()
+    const q = adminMode
       ? query(collection(db, 'nilai'), where('kelas', '==', kelas))
       : query(
           collection(db, 'nilai'),

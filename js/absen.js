@@ -360,7 +360,12 @@ export async function muatHalamanAbsen() {
   });
 
   const kelas = getKelasTerpilih();
-  if (!kelas || siswaList.length === 0) {
+  const kelasDiizinkan = getKelasYangDiizinkan();
+  if (
+    !kelas ||
+    siswaList.length === 0 ||
+    (!isAdmin() && Array.isArray(kelasDiizinkan) && !kelasDiizinkan.includes(kelas))
+  ) {
     perbaruiBannerSudahAda('', '');
     renderDaftarAbsen();
     return;

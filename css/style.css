@@ -1,5 +1,5 @@
 /* ==========================================================================
-   SMP Muhammadiyah Al Furqan — Rekap Nilai & Absen
+   LMS SMP MUHAMMADIYAH AL FURQAN — Gaya Tampilan
    Desain sederhana, huruf minimal 16px, nyaman untuk HP dan PC.
    ========================================================================== */
 
@@ -1340,6 +1340,120 @@ a:focus-visible {
   .backup-panel-inner .btn {
     flex-shrink: 0;
   }
+}
+
+.backup-progress-box {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.backup-progress-warning {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #92400e;
+  background-color: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.backup-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.backup-progress-track {
+  width: 100%;
+  height: 10px;
+  background-color: var(--bg-subtle);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.backup-progress-fill {
+  height: 100%;
+  width: 0%;
+  background-color: var(--accent-primary);
+  transition: width 0.2s ease;
+}
+
+.backup-progress-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 640px) {
+  .backup-progress-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.backup-progress-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-subtle);
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.backup-progress-item--loading {
+  border-color: #93c5fd;
+  background-color: #eff6ff;
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.backup-progress-item--ok {
+  border-color: #a7f3d0;
+  background-color: #e6f4ed;
+  color: #0b5336;
+}
+
+.backup-progress-item--err {
+  border-color: #fca5a5;
+  background-color: #fef2f2;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.backup-progress-result {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+}
+
+.backup-progress-result--ok {
+  background-color: #e6f4ed;
+  border: 1px solid #a7f3d0;
+  color: #0b5336;
+}
+
+.backup-progress-result--warn {
+  background-color: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
 }
 
 /* Halaman Panduan 5 Langkah */

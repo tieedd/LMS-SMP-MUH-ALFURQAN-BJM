@@ -1,5 +1,5 @@
 // ==========================================================================
-// Modul Excel (SheetJS via CDN)
+// Modul Excel (SheetJS lokal)
 // Mengurus unduh template siswa, validasi + pratinjau unggah Excel,
 // serta unduh rekap absen dan rekap nilai.
 // ==========================================================================
@@ -54,7 +54,7 @@ function tulisWorkbookAman(XLSX, wb, fileName) {
 function pastikanSheetJS() {
   if (typeof window.XLSX === 'undefined') {
     throw buatErrorRamah(
-      'Fitur Excel belum termuat sempurna. Periksa koneksi internet Anda lalu muat ulang halaman.'
+      'Fitur Excel belum termuat sempurna. Silakan muat ulang halaman lalu coba lagi.'
     );
   }
   return window.XLSX;

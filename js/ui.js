@@ -552,27 +552,31 @@ export async function muatDataKelasDanMapel() {
 
   try {
     // 1. Muat kelas
-    const kelasItems = [];
+    const kelasMap = new Map();
     if (role === 'admin') {
       const snap = await getDocs(collection(db, 'kelas'));
-      snap.forEach((d) => kelasItems.push({ id: d.id, ...d.data() }));
+      snap.forEach((d) => kelasMap.set(d.id, { id: d.id, ...d.data() }));
     } else if (role === 'wali_kelas' && kelasDiizinkan.length > 0) {
       const snap = await getDocs(
         query(collection(db, 'kelas'), where('nama', '==', kelasDiizinkan[0]))
       );
-      snap.forEach((d) => kelasItems.push({ id: d.id, ...d.data() }));
+      snap.forEach((d) => kelasMap.set(d.id, { id: d.id, ...d.data() }));
     } else if (role === 'guru' && kelasDiizinkan.length > 0) {
-      const snap = await getDocs(
-        query(collection(db, 'kelas'), where('nama', 'in', kelasDiizinkan.slice(0, 30)))
+      const kelasUnik = Array.from(new Set(kelasDiizinkan.filter(Boolean)));
+      const snaps = await Promise.all(
+        kelasUnik.map((k) => getDocs(query(collection(db, 'kelas'), where('nama', '==', k))))
       );
-      snap.forEach((d) => kelasItems.push({ id: d.id, ...d.data() }));
+      snaps.forEach((snap) => {
+        snap.forEach((d) => kelasMap.set(d.id, { id: d.id, ...d.data() }));
+      });
     }
+    const kelasItems = Array.from(kelasMap.values());
     kelasItems.sort((a, b) => String(a.nama || a.id).localeCompare(String(b.nama || b.id), 'id'));
     daftarKelas = kelasItems;
 
-    // 2. Muat mapel
+    // 2. Muat mapel (query penuh tanpa filter hanya untuk admin)
     const mapelMap = new Map();
-    if (role === 'admin' || role === 'wali_kelas') {
+    if (role === 'admin') {
       const snap = await getDocs(collection(db, 'mapel'));
       snap.forEach((d) => mapelMap.set(d.id, { id: d.id, ...d.data() }));
     } else if (role === 'guru') {
@@ -580,15 +584,16 @@ export async function muatDataKelasDanMapel() {
       if (uid) {
         tugasQuery.push(getDocs(query(collection(db, 'mapel'), where('guruId', '==', uid))));
       }
-      if (mapelDiampu.length > 0) {
-        tugasQuery.push(
-          getDocs(query(collection(db, 'mapel'), where('nama', 'in', mapelDiampu.slice(0, 30))))
-        );
-      }
-      const snaps = await Promise.all(tugasQuery);
-      snaps.forEach((snap) => {
-        snap.forEach((d) => mapelMap.set(d.id, { id: d.id, ...d.data() }));
+      const mapelUnik = Array.from(new Set(mapelDiampu.filter(Boolean)));
+      mapelUnik.forEach((m) => {
+        tugasQuery.push(getDocs(query(collection(db, 'mapel'), where('nama', '==', m))));
       });
+      if (tugasQuery.length > 0) {
+        const snaps = await Promise.all(tugasQuery);
+        snaps.forEach((snap) => {
+          snap.forEach((d) => mapelMap.set(d.id, { id: d.id, ...d.data() }));
+        });
+      }
     }
     daftarMapel = Array.from(mapelMap.values()).sort((a, b) =>
       String(a.nama || '').localeCompare(String(b.nama || ''), 'id')
@@ -621,27 +626,53 @@ export async function muatDataSiswa() {
   }
 
   try {
-    let q;
+    const siswaMap = new Map();
     if (role === 'admin') {
-      q = collection(db, 'siswa');
-    } else if (role === 'wali_kelas') {
-      q = query(collection(db, 'siswa'), where('kelas', '==', kelasDiizinkan[0]));
-    } else {
-      q = query(collection(db, 'siswa'), where('kelas', 'in', kelasDiizinkan.slice(0, 30)));
+      const snap = await getDocs(collection(db, 'siswa'));
+      snap.forEach((d) => {
+        const data = d.data();
+        siswaMap.set(d.id, {
+          id: d.id,
+          nis: d.id,
+          nama: data.nama || '',
+          kelas: data.kelas || '',
+          jk: data.jk || data.jenisKelamin || 'L'
+        });
+      });
+    } else if (role === 'wali_kelas' && kelasDiizinkan.length > 0) {
+      const snap = await getDocs(
+        query(collection(db, 'siswa'), where('kelas', '==', kelasDiizinkan[0]))
+      );
+      snap.forEach((d) => {
+        const data = d.data();
+        siswaMap.set(d.id, {
+          id: d.id,
+          nis: d.id,
+          nama: data.nama || '',
+          kelas: data.kelas || '',
+          jk: data.jk || data.jenisKelamin || 'L'
+        });
+      });
+    } else if (role === 'guru' && kelasDiizinkan.length > 0) {
+      const kelasUnik = Array.from(new Set(kelasDiizinkan.filter(Boolean)));
+      const snaps = await Promise.all(
+        kelasUnik.map((k) => getDocs(query(collection(db, 'siswa'), where('kelas', '==', k))))
+      );
+      snaps.forEach((snap) => {
+        snap.forEach((d) => {
+          const data = d.data();
+          siswaMap.set(d.id, {
+            id: d.id,
+            nis: d.id,
+            nama: data.nama || '',
+            kelas: data.kelas || '',
+            jk: data.jk || data.jenisKelamin || 'L'
+          });
+        });
+      });
     }
 
-    const snap = await getDocs(q);
-    const items = [];
-    snap.forEach((d) => {
-      const data = d.data();
-      items.push({
-        id: d.id,
-        nis: d.id,
-        nama: data.nama || '',
-        kelas: data.kelas || '',
-        jk: data.jk || data.jenisKelamin || 'L'
-      });
-    });
+    const items = Array.from(siswaMap.values());
 
     items.sort((a, b) => {
       const cmpKelas = String(a.kelas || '').localeCompare(String(b.kelas || ''), 'id');
@@ -2248,59 +2279,210 @@ function aturTabAdmin(tab) {
   }
 }
 
+let sedangBackupExcel = false;
+
+function renderProgresBackup(langkahList, selesaiCount, teksStatus, hasilAkhir = null) {
+  const box = document.getElementById('backup-progress-box');
+  if (!box) return;
+
+  box.hidden = false;
+  const total = langkahList.length;
+  const persen = total > 0 ? Math.round((selesaiCount / total) * 100) : 0;
+
+  const itemsHtml = langkahList
+    .map((item) => {
+      const cls =
+        item.state === 'loading'
+          ? 'backup-progress-item--loading'
+          : item.state === 'ok'
+          ? 'backup-progress-item--ok'
+          : item.state === 'err'
+          ? 'backup-progress-item--err'
+          : '';
+      return `
+        <li class="backup-progress-item ${cls}">
+          <span>${escapeHtml(item.label)}</span>
+          <span class="num">${escapeHtml(item.statusText)}</span>
+        </li>
+      `;
+    })
+    .join('');
+
+  const resultHtml = hasilAkhir
+    ? `<p class="backup-progress-result ${
+        hasilAkhir.warning ? 'backup-progress-result--warn' : 'backup-progress-result--ok'
+      }">${escapeHtml(hasilAkhir.message)}</p>`
+    : '';
+
+  box.innerHTML = `
+    <p class="backup-progress-warning">
+      Proses ini bisa memakan waktu beberapa menit, jangan tutup halaman.
+    </p>
+    <div class="backup-progress-head">
+      <span>${escapeHtml(teksStatus)}</span>
+      <span class="num">${selesaiCount}/${total} (${persen}%)</span>
+    </div>
+    <div class="backup-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${persen}">
+      <div class="backup-progress-fill" style="width:${persen}%"></div>
+    </div>
+    <ul class="backup-progress-list">${itemsHtml}</ul>
+    ${resultHtml}
+  `;
+}
+
 async function cadangkanSemuaDataExcel() {
   if (!isAdmin()) {
     tampilkanError('Hanya Admin sekolah yang dapat mencadangkan semua data.');
     return;
   }
+  if (sedangBackupExcel) return;
+  sedangBackupExcel = true;
 
   const btn = document.getElementById('btn-cadangkan-excel');
   const labelAwal = btn ? btn.textContent : 'Cadangkan Semua Data ke Excel';
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Menyiapkan File Excel...';
+    btn.textContent = 'Sedang Mencadangkan...';
   }
 
   const { db } = getFirebaseServices();
 
+  const langkahList = [
+    { key: 'siswa', label: 'Data Siswa', state: 'wait', statusText: 'Menunggu' },
+    { key: 'kelas', label: 'Daftar Kelas', state: 'wait', statusText: 'Menunggu' },
+    { key: 'mapel', label: 'Mata Pelajaran', state: 'wait', statusText: 'Menunggu' },
+    { key: 'absensi', label: 'Absensi Harian', state: 'wait', statusText: 'Menunggu' },
+    { key: 'rekapAbsen', label: 'Rekap Absen Bulanan', state: 'wait', statusText: 'Menunggu' },
+    { key: 'nilai', label: 'Nilai Siswa', state: 'wait', statusText: 'Menunggu' },
+    { key: 'users', label: 'Akun Pengguna', state: 'wait', statusText: 'Menunggu' },
+    { key: 'pengaturan', label: 'Pengaturan Sekolah', state: 'wait', statusText: 'Menunggu' }
+  ];
+
+  const koleksiGagal = [];
+  let selesaiCount = 0;
+
+  let siswaList = [];
+  let kelasList = [];
+  let mapelList = [];
+  let absensiList = [];
+  let rekapAbsenList = [];
+  let nilaiList = [];
+  let usersList = [];
+  let bobot = { tugas: 30, uts: 30, uas: 40 };
+  let kkm = 75;
+
+  tampilkanInfo('Proses ini bisa memakan waktu beberapa menit, jangan tutup halaman.');
+  renderProgresBackup(langkahList, selesaiCount, 'Memulai cadangan semua data...');
+
+  async function bacaKoleksi(idx, readerFn) {
+    const item = langkahList[idx];
+    item.state = 'loading';
+    item.statusText = 'Sedang dibaca...';
+    renderProgresBackup(langkahList, selesaiCount, `Membaca ${item.label}...`);
+    try {
+      const jumlahText = await readerFn();
+      item.state = 'ok';
+      item.statusText = jumlahText;
+    } catch {
+      item.state = 'err';
+      item.statusText = 'Gagal dibaca';
+      koleksiGagal.push(item.label);
+    } finally {
+      selesaiCount += 1;
+      renderProgresBackup(
+        langkahList,
+        selesaiCount,
+        selesaiCount === langkahList.length
+          ? 'Selesai membaca semua koleksi.'
+          : `Selesai ${selesaiCount} dari ${langkahList.length} koleksi...`
+      );
+    }
+  }
+
   try {
-    tampilkanInfo('Sedang mengumpulkan semua data sekolah untuk dicadangkan...');
+    await bacaKoleksi(0, async () => {
+      const snap = await getDocs(collection(db, 'siswa'));
+      snap.forEach((d) => {
+        const data = d.data();
+        siswaList.push({
+          id: d.id,
+          nis: d.id,
+          nama: data.nama || '',
+          kelas: data.kelas || '',
+          jk: data.jk || data.jenisKelamin || 'L'
+        });
+      });
+      siswaList.sort((a, b) => String(a.kelas).localeCompare(String(b.kelas), 'id'));
+      return `${siswaList.length} data`;
+    });
 
-    const [absensiSnap, rekapAbsenSnap, nilaiSnap, usersSnap, bobotSnap, kkmSnap] =
-      await Promise.all([
-        getDocs(collection(db, 'absensi')),
-        getDocs(collection(db, 'rekapAbsen')),
-        getDocs(collection(db, 'nilai')),
-        akunSudahDimuat ? Promise.resolve(null) : getDocs(collection(db, 'users')),
-        getDoc(doc(db, 'pengaturan', 'bobotNilai')).catch(() => null),
-        getDoc(doc(db, 'pengaturan', 'kkm')).catch(() => null)
-      ]);
+    await bacaKoleksi(1, async () => {
+      const snap = await getDocs(collection(db, 'kelas'));
+      snap.forEach((d) => kelasList.push({ id: d.id, ...d.data() }));
+      kelasList.sort((a, b) => String(a.nama || a.id).localeCompare(String(b.nama || b.id), 'id'));
+      return `${kelasList.length} data`;
+    });
 
-    const absensiList = [];
-    absensiSnap.forEach((d) => absensiList.push({ id: d.id, ...d.data() }));
+    await bacaKoleksi(2, async () => {
+      const snap = await getDocs(collection(db, 'mapel'));
+      snap.forEach((d) => mapelList.push({ id: d.id, ...d.data() }));
+      mapelList.sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
+      return `${mapelList.length} data`;
+    });
 
-    const rekapAbsenList = [];
-    rekapAbsenSnap.forEach((d) => rekapAbsenList.push({ id: d.id, ...d.data() }));
+    await bacaKoleksi(3, async () => {
+      const snap = await getDocs(collection(db, 'absensi'));
+      snap.forEach((d) => absensiList.push({ id: d.id, ...d.data() }));
+      return `${absensiList.length} data`;
+    });
 
-    const nilaiList = [];
-    nilaiSnap.forEach((d) => nilaiList.push({ id: d.id, ...d.data() }));
+    await bacaKoleksi(4, async () => {
+      const snap = await getDocs(collection(db, 'rekapAbsen'));
+      snap.forEach((d) => rekapAbsenList.push({ id: d.id, ...d.data() }));
+      return `${rekapAbsenList.length} data`;
+    });
 
-    let usersList = daftarAkun;
-    if (usersSnap) {
-      usersList = [];
-      usersSnap.forEach((d) => usersList.push({ id: d.id, ...d.data() }));
+    await bacaKoleksi(5, async () => {
+      const snap = await getDocs(collection(db, 'nilai'));
+      snap.forEach((d) => nilaiList.push({ id: d.id, ...d.data() }));
+      return `${nilaiList.length} data`;
+    });
+
+    await bacaKoleksi(6, async () => {
+      const snap = await getDocs(collection(db, 'users'));
+      snap.forEach((d) => usersList.push({ id: d.id, ...d.data() }));
       usersList.sort((a, b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'));
       daftarAkun = usersList;
       akunSudahDimuat = true;
+      return `${usersList.length} data`;
+    });
+
+    await bacaKoleksi(7, async () => {
+      const [bobotSnap, kkmSnap] = await Promise.all([
+        getDoc(doc(db, 'pengaturan', 'bobotNilai')),
+        getDoc(doc(db, 'pengaturan', 'kkm'))
+      ]);
+      if (bobotSnap.exists()) bobot = bobotSnap.data();
+      if (kkmSnap.exists()) kkm = kkmSnap.data().kkm ?? 75;
+      return 'Berhasil';
+    });
+
+    if (koleksiGagal.length === langkahList.length) {
+      const pesanGagalSemua = `Semua data gagal dibaca (${koleksiGagal.join(
+        ', '
+      )}). Periksa koneksi internet Anda lalu coba lagi.`;
+      renderProgresBackup(langkahList, selesaiCount, 'Cadangan tidak dapat dibuat.', {
+        warning: true,
+        message: pesanGagalSemua
+      });
+      tampilkanError(pesanGagalSemua);
+      return;
     }
 
-    const bobot = bobotSnap && bobotSnap.exists() ? bobotSnap.data() : { tugas: 30, uts: 30, uas: 40 };
-    const kkm = kkmSnap && kkmSnap.exists() ? kkmSnap.data().kkm ?? 75 : 75;
-
     const fileName = exportBackupSemuaDataExcel({
-      siswaList: daftarSiswa,
-      kelasList: daftarKelas,
-      mapelList: daftarMapel,
+      siswaList,
+      kelasList,
+      mapelList,
       absensiList,
       rekapAbsenList,
       nilaiList,
@@ -2310,14 +2492,35 @@ async function cadangkanSemuaDataExcel() {
       tanggalHariIniStr: tanggalHariIni()
     });
 
-    tampilkanSukses(`Semua data sekolah berhasil dicadangkan ke file "${fileName}".`);
-  } catch (error) {
-    try {
-      handleFirestoreError(error, OperationType.LIST, 'backup_excel');
-    } catch (wrapped) {
-      tampilkanError(wrapped.friendlyMessage || 'Gagal membuat cadangan data ke Excel.');
+    if (koleksiGagal.length > 0) {
+      const pesanParsial = `File cadangan "${fileName}" berhasil diunduh, tetapi ada data yang gagal dibaca dan tidak ikut tersimpan: ${koleksiGagal.join(
+        ', '
+      )}.`;
+      renderProgresBackup(langkahList, selesaiCount, 'Cadangan selesai dengan catatan.', {
+        warning: true,
+        message: pesanParsial
+      });
+      tampilkanError(pesanParsial);
+    } else {
+      const pesanSukses = `Semua data sekolah berhasil dicadangkan ke file "${fileName}".`;
+      renderProgresBackup(langkahList, selesaiCount, 'Cadangan selesai.', {
+        warning: false,
+        message: pesanSukses
+      });
+      tampilkanSukses(pesanSukses);
     }
+  } catch (error) {
+    const pesan = pesanRamahError(error);
+    renderProgresBackup(langkahList, selesaiCount, 'Proses cadangan terhenti.', {
+      warning: true,
+      message:
+        koleksiGagal.length > 0
+          ? `${pesan} Data yang gagal dibaca: ${koleksiGagal.join(', ')}.`
+          : pesan
+    });
+    tampilkanError(pesan);
   } finally {
+    sedangBackupExcel = false;
     if (btn) {
       btn.disabled = false;
       btn.textContent = labelAwal;

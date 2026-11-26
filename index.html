@@ -35,8 +35,8 @@
     <!-- CSS utama (tanpa build tool) -->
     <link rel="stylesheet" href="css/style.css" />
 
-    <!-- SheetJS (XLSX) via CDN untuk ekspor dan impor Excel -->
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <!-- SheetJS (XLSX) lokal untuk ekspor dan impor Excel -->
+    <script src="vendor/xlsx.full.min.js"></script>
   </head>
   <body>
     <!-- Area notifikasi ramah (toast) -->
@@ -632,6 +632,7 @@
                   Cadangkan Semua Data ke Excel
                 </button>
               </div>
+              <div id="backup-progress-box" class="backup-progress-box" aria-live="polite" hidden></div>
             </div>
 
             <!-- Panel Daftar Siswa -->

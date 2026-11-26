@@ -23,6 +23,7 @@ import {
   formatBulanIndonesia,
   getDaftarSiswa,
   getDaftarMapelMaster,
+  getProfilPengguna,
   getPeranPengguna,
   getKelasYangDiizinkan,
   getMapelYangDiizinkan,
@@ -218,7 +219,13 @@ async function muatDataRekapAbsen(paksaMuatUlang = false) {
   const kelasDipilih = document.getElementById('rekap-absen-kelas')?.value || '';
   const { months } = getPeriodeAbsenTerpilih();
 
-  if (Array.isArray(kelasDiizinkan) && kelasDiizinkan.length === 0) {
+  if (
+    (Array.isArray(kelasDiizinkan) && kelasDiizinkan.length === 0) ||
+    (!isAdmin() &&
+      kelasDipilih &&
+      Array.isArray(kelasDiizinkan) &&
+      !kelasDiizinkan.includes(kelasDipilih))
+  ) {
     cacheRekapAbsen = [];
     cacheAbsensiFallback = [];
     menggunakanFallbackAbsensi = false;
@@ -230,8 +237,17 @@ async function muatDataRekapAbsen(paksaMuatUlang = false) {
   const targetKelas = kelasDipilih
     ? [kelasDipilih]
     : Array.isArray(kelasDiizinkan)
-    ? kelasDiizinkan.slice(0, 30)
+    ? Array.from(new Set(kelasDiizinkan.filter(Boolean)))
     : null;
+
+  if (!targetKelas && role !== 'admin') {
+    cacheRekapAbsen = [];
+    cacheAbsensiFallback = [];
+    menggunakanFallbackAbsensi = false;
+    jumlahDokumenRekapDibaca = 0;
+    renderRekapAbsen();
+    return;
+  }
 
   const filterKey = `${targetKelas ? targetKelas.join(',') : 'ALL'}|${months.join(',')}`;
   if (!paksaMuatUlang && cacheRekapAbsenPerFilter.has(filterKey)) {
@@ -250,55 +266,77 @@ async function muatDataRekapAbsen(paksaMuatUlang = false) {
   jumlahDokumenRekapDibaca = 0;
 
   try {
-    // 1. Baca dari koleksi ringkasan rekapAbsen memakai filter indeks tunggal agar cepat & hemat kuota
-    let qRekap;
-    if (targetKelas && targetKelas.length === 1) {
-      qRekap = query(collection(db, 'rekapAbsen'), where('kelas', '==', targetKelas[0]));
-    } else if (targetKelas) {
-      qRekap = query(collection(db, 'rekapAbsen'), where('kelas', 'in', targetKelas));
-    } else if (role === 'admin' && months.length === 1) {
-      qRekap = query(collection(db, 'rekapAbsen'), where('bulan', '==', months[0]));
-    } else {
-      qRekap = query(collection(db, 'rekapAbsen'), where('bulan', 'in', months));
-    }
-
-    const rekapSnap = await getDocs(qRekap);
     const monthsSet = new Set(months);
 
-    rekapSnap.forEach((d) => {
-      const data = d.data();
-      if (monthsSet.has(data.bulan)) {
-        cacheRekapAbsen.push({ id: d.id, ...data });
-      }
-    });
+    // 1. Baca dari koleksi ringkasan rekapAbsen (satu query per kelas untuk guru/wali_kelas agar aman dari batas 'in' & rules)
+    const rekapMap = new Map();
+    if (targetKelas) {
+      const snaps = await Promise.all(
+        targetKelas.map((k) =>
+          getDocs(query(collection(db, 'rekapAbsen'), where('kelas', '==', k)))
+        )
+      );
+      snaps.forEach((snap) => {
+        snap.forEach((d) => {
+          const data = d.data();
+          if (monthsSet.has(data.bulan)) {
+            rekapMap.set(d.id, { id: d.id, ...data });
+          }
+        });
+      });
+    } else if (role === 'admin') {
+      const qRekap =
+        months.length === 1
+          ? query(collection(db, 'rekapAbsen'), where('bulan', '==', months[0]))
+          : query(collection(db, 'rekapAbsen'), where('bulan', 'in', months));
+      const rekapSnap = await getDocs(qRekap);
+      rekapSnap.forEach((d) => {
+        const data = d.data();
+        if (monthsSet.has(data.bulan)) {
+          rekapMap.set(d.id, { id: d.id, ...data });
+        }
+      });
+    }
+    cacheRekapAbsen = Array.from(rekapMap.values());
     jumlahDokumenRekapDibaca = cacheRekapAbsen.length;
 
     // 2. Fallback ringan: hanya baca absensi jika ringkasan rekapAbsen periode ini belum ada
     if (cacheRekapAbsen.length === 0) {
-      const awalBulan = `${months[0]}-01`;
-      const akhirBulan = `${months[months.length - 1]}-31`;
-      let qAbs;
-
-      if (targetKelas && targetKelas.length === 1) {
-        qAbs = query(collection(db, 'absensi'), where('kelas', '==', targetKelas[0]));
-      } else if (targetKelas) {
-        qAbs = query(collection(db, 'absensi'), where('kelas', 'in', targetKelas));
-      } else {
-        qAbs = query(
+      const absMap = new Map();
+      if (targetKelas) {
+        const absSnaps = await Promise.all(
+          targetKelas.map((k) =>
+            getDocs(query(collection(db, 'absensi'), where('kelas', '==', k)))
+          )
+        );
+        absSnaps.forEach((snap) => {
+          snap.forEach((d) => {
+            const data = d.data();
+            const ym = String(data.tanggal || '').slice(0, 7);
+            if (monthsSet.has(ym)) {
+              absMap.set(d.id, { id: d.id, ...data });
+            }
+          });
+        });
+      } else if (role === 'admin') {
+        const awalBulan = `${months[0]}-01`;
+        const akhirBulan = `${months[months.length - 1]}-31`;
+        const qAbs = query(
           collection(db, 'absensi'),
           where('tanggal', '>=', awalBulan),
           where('tanggal', '<=', akhirBulan)
         );
+        const absSnap = await getDocs(qAbs);
+        absSnap.forEach((d) => {
+          const data = d.data();
+          const ym = String(data.tanggal || '').slice(0, 7);
+          if (monthsSet.has(ym)) {
+            absMap.set(d.id, { id: d.id, ...data });
+          }
+        });
       }
 
-      const absSnap = await getDocs(qAbs);
-      absSnap.forEach((d) => {
-        const data = d.data();
-        const ym = String(data.tanggal || '').slice(0, 7);
-        if (monthsSet.has(ym)) {
-          cacheAbsensiFallback.push({ id: d.id, ...data });
-        }
-      });
+      cacheAbsensiFallback = Array.from(absMap.values());
       if (cacheAbsensiFallback.length > 0) {
         menggunakanFallbackAbsensi = true;
       }
@@ -685,26 +723,44 @@ async function muatDataRekapNilai(paksaMuatUlang = false) {
     if (role === 'admin') {
       const snap = await getDocs(collection(db, 'nilai'));
       snap.forEach((d) => cacheNilai.push({ id: d.id, ...d.data() }));
-    } else if (role === 'wali_kelas') {
+    } else if (role === 'wali_kelas' && kelasDiizinkan.length > 0) {
       const snap = await getDocs(
         query(collection(db, 'nilai'), where('kelas', '==', kelasDiizinkan[0]))
       );
       snap.forEach((d) => cacheNilai.push({ id: d.id, ...d.data() }));
-    } else if (Array.isArray(mapelDiizinkan) && mapelDiizinkan.length > 0) {
-      const snaps = await Promise.all(
-        mapelDiizinkan.map((mapel) =>
-          getDocs(
-            query(
-              collection(db, 'nilai'),
-              where('kelas', 'in', kelasDiizinkan.slice(0, 30)),
-              where('mapel', '==', mapel)
-            )
-          )
-        )
-      );
-      snaps.forEach((snap) => {
-        snap.forEach((d) => cacheNilai.push({ id: d.id, ...d.data() }));
-      });
+    } else if (role === 'guru') {
+      const profil = getProfilPengguna();
+      const mapelRules = Array.isArray(profil?.mapelDiampu)
+        ? profil.mapelDiampu
+        : Array.isArray(mapelDiizinkan)
+        ? mapelDiizinkan
+        : [];
+      const kelasUnik = Array.from(new Set((kelasDiizinkan || []).filter(Boolean)));
+      const mapelUnik = Array.from(new Set(mapelRules.filter(Boolean)));
+
+      if (kelasUnik.length > 0 && mapelUnik.length > 0) {
+        const daftarQuery = [];
+        kelasUnik.forEach((kelas) => {
+          mapelUnik.forEach((mapel) => {
+            daftarQuery.push(
+              getDocs(
+                query(
+                  collection(db, 'nilai'),
+                  where('kelas', '==', kelas),
+                  where('mapel', '==', mapel)
+                )
+              )
+            );
+          });
+        });
+
+        const snaps = await Promise.all(daftarQuery);
+        const nilaiMap = new Map();
+        snaps.forEach((snap) => {
+          snap.forEach((d) => nilaiMap.set(d.id, { id: d.id, ...d.data() }));
+        });
+        cacheNilai = Array.from(nilaiMap.values());
+      }
     }
     nilaiRekapSudahDimuat = true;
     sinkronDropdownMapelRekap();
